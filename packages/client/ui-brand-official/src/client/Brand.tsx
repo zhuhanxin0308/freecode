@@ -1,19 +1,22 @@
-import { BrandWordmark, FishLogo } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FreeCodeLogo } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import css from './Brand.module.css'
+
+const BRAND_NAME = 'free code'
 
 /**
- * Render the official mark with the presentation requested by its host surface.
- * @param props - Host-supplied mark presentation.
- * @returns the official whale mark.
+ * 按宿主请求的尺寸展示 free code 标志。
+ * @param props - 宿主指定的尺寸和样式。
+ * @returns 与当前界面主题适配的品牌图形。
  */
 export function OfficialBrandMark({ size }: SidebarBrandMarkOwnerProps) {
-  return <FishLogo size={size} />
+  return <FreeCodeLogo size={size} className={css.mark} />
 }
 
 /**
- * Render the official name artwork without its independently slotted mark.
- * @returns the official name wordmark.
+ * 绘制与独立图标插槽配合的小写品牌字标。
+ * @returns 保持自然宽度的品牌名称。
  */
 export function OfficialBrandName() {
-  return <BrandWordmark includeMark={false} />
+  return <span className={css.wordmark}>{BRAND_NAME}</span>
 }

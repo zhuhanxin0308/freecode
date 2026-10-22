@@ -178,6 +178,11 @@ export function apply(ctx: Context): void {
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },
     refreshAccount,
     contactUs() {
+      // 独立产品默认只打开反馈页，不读取或附带账号和设备信息。
+      if (!config.contactIncludeContext) {
+        window.open(config.contactFormUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
       // Sample the account, build and environment before awaiting native information, so
       // a profile the read outlasts cannot replace the UID this click reported.
       const profile = snapshot.details?.profile

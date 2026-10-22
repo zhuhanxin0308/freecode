@@ -35,7 +35,7 @@ describe('Desktop local packaging configuration', () => {
     const local = localMacOSPackageEnvironment(parent)
     expect(local).toEqual({
       PATH: parent.PATH, HTTPS_PROXY: parent.HTTPS_PROXY, DSH_DESKTOP_NPM_REGISTRY: parent.DSH_DESKTOP_NPM_REGISTRY,
-      DSH_DESKTOP_APP_ID: 'com.deepseek.harness', DSH_DESKTOP_UNSIGNED: '1',
+      DSH_DESKTOP_APP_ID: 'io.github.zhuhanxin0308.freecode', DSH_DESKTOP_UNSIGNED: '1',
     })
     expect(() => { validateDesktopPackageEnvironment(local, MACOS, { unsigned: true }) }).not.toThrow()
     expect(parent.DSH_DESKTOP_UNSIGNED).toBe('0')
@@ -162,7 +162,7 @@ describe('Desktop local packaging configuration', () => {
     const local = localMacOSPackageEnvironment({})
     expect(() => { validateDesktopPackageEnvironment(local, MACOS, { unsigned: true }) }).not.toThrow()
     expect(() => { validateDesktopPackageEnvironment(local, MACOS) })
-      .toThrow('DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN')
+      .toThrow('DSH_DESKTOP_MACOS_SIGNING_IDENTITY')
     expect(() => { validateDesktopPackageEnvironment(RELEASE, MACOS) }).toThrow('DSH_DESKTOP_MACOS_SIGNING_IDENTITY')
   })
 

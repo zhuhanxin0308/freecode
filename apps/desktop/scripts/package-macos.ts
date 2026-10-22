@@ -4,6 +4,8 @@ import { execFile } from 'node:child_process'
 import { mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
+import { PRODUCT_BRAND } from '../src/product-brand.ts'
+import { verifyFreeCodeUpdateConfig } from './free-code-update.mjs'
 import { notarizeMacOS } from './notarize-macos.mjs'
 import { packagingStep } from './packaging-step.mjs'
 import {
@@ -77,19 +79,22 @@ export async function packageMacOSArtifacts(
   const secrets = Object.entries(environment).filter(([name]) => /KEY|SECRET|TOKEN|PASSWORD|APPLE_ID/iu.test(name)).map(([, value]) => value ?? '')
   const expected = resolveMacOSSigningEnvironment(environment)
   const credentials = resolveMacOSNotarizationEnvironment(environment)
-  const update = resolveDesktopAutoUpdateConfig(environment, 'darwin', arch)
-  const appPath = join(artifactsRoot, arch === 'arm64' ? 'mac-arm64' : 'mac', 'DeepSeek Harness.app')
+  const update = environment.DSH_DESKTOP_APP_ID === PRODUCT_BRAND.appId
+    ? undefined : resolveDesktopAutoUpdateConfig(environment, 'darwin', arch)
+  const verifyUpdate = (path: string) => update === undefined
+    ? verifyFreeCodeUpdateConfig(join(path, 'Contents', 'Resources')) : verifyMacOSAppUpdateConfig(path, update)
+  const appPath = join(artifactsRoot, arch === 'arm64' ? 'mac-arm64' : 'mac', `${PRODUCT_BRAND.name}.app`)
   const root = await mkdtemp(join(dirname(artifactsRoot), 'notarization-'))
   const zipApp = join(root, 'zip', basename(appPath))
   const dmgApp = join(root, 'dmg', basename(appPath))
   const zipOutput = join(root, 'zip-artifacts')
   const dmgOutput = join(root, 'dmg-artifacts')
   try {
-    await verifyMacOSAppUpdateConfig(appPath, update)
+    await verifyUpdate(appPath)
     await apple.copyApp(appPath, zipApp)
     await apple.copyApp(appPath, dmgApp)
-    await verifyMacOSAppUpdateConfig(zipApp, update)
-    await verifyMacOSAppUpdateConfig(dmgApp, update)
+    await verifyUpdate(zipApp)
+    await verifyUpdate(dmgApp)
     apple.verifySignature(zipApp, expected)
     apple.verifySignature(dmgApp, expected)
     const results = await Promise.allSettled([
@@ -106,16 +111,16 @@ export async function packageMacOSArtifacts(
     if (failures.length > 0) {
       throw new AggregateError(failures.map(result => result.reason), 'desktop macOS packaging: artifact lanes failed')
     }
-    await verifyMacOSAppUpdateConfig(zipApp, update)
-    await verifyMacOSAppUpdateConfig(dmgApp, update)
+    await verifyUpdate(zipApp)
+    await verifyUpdate(dmgApp)
     apple.verifySignature(zipApp, expected)
     apple.verifySignature(dmgApp, expected)
-    const base = `deepseek-harness-${version}-mac-${arch}`
+    const base = `${PRODUCT_BRAND.slug}-${version}-mac-${arch}`
     const artifacts = [
       [dmgOutput, `${base}.dmg`],
       [zipOutput, `${base}.zip`],
       [zipOutput, `${base}.zip.blockmap`],
-      [zipOutput, desktopUpdateMetadataFilename(version, 'darwin', update.channel)],
+      [zipOutput, desktopUpdateMetadataFilename(version, 'darwin', update?.channel ?? 'latest')],
     ] as const
     for (const [output, filename] of artifacts) {
       const file = join(output, filename)

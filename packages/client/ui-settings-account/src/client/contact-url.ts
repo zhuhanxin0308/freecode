@@ -17,6 +17,7 @@ export function contactUrl(config: ContactConfig, context: {
   pixelRatio: number
 }): string {
   const url = new URL(config.contactFormUrl)
+  if (!config.contactIncludeContext) return url.href
   const ratio = Number.isFinite(context.pixelRatio) ? context.pixelRatio : 1
   const width = Math.round(context.width * ratio)
   const height = Math.round(context.height * ratio)

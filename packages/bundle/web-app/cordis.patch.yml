@@ -44,19 +44,19 @@
 - insert:
     - id: desktop-product-telemetry
       name: '@deepseek-ai/dsh-host-product-telemetry-otel'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.FREECODE_PRODUCT_ANALYTICS_OTLP_URL"
       config:
         scheduledDelayMillis: 30000
         timeoutMillis: 15000
         exportTimeoutMillis: 20000
         shutdownTimeoutMillis: 2000
-        serviceName: deepseek-harness-desktop
+        serviceName: freecode-desktop
         serviceVersion: !!js process.env.DSH_CLIENT_VERSION
-        endpoint: !!js process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL
+        endpoint: !!js process.env.FREECODE_PRODUCT_ANALYTICS_OTLP_URL
 
     - id: product-analytics
       name: '@deepseek-ai/dsh-client-product-analytics'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.FREECODE_PRODUCT_ANALYTICS_OTLP_URL"
       config:
         enabled: true
         appVersion: !!js process.env.DSH_CLIENT_VERSION

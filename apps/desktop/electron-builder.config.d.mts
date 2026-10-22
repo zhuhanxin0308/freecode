@@ -4,7 +4,8 @@ import type { AfterPackContext, BeforePackContext } from 'app-builder-lib'
 export interface DesktopElectronBuilderConfig {
   readonly appId: string
   readonly artifactName: string
-  readonly protocols: readonly [{ readonly name: 'DeepSeek Harness'; readonly schemes: readonly ['dsh'] }]
+  readonly productName: 'free code'
+  readonly protocols: readonly [{ readonly name: 'free code'; readonly schemes: readonly ['freecode'] }]
   readonly directories: {
     readonly output: string
   }
@@ -55,7 +56,9 @@ export interface DesktopElectronBuilderConfig {
   readonly afterPack: (context: AfterPackContext) => Promise<void>
   readonly afterSign: (context: AfterPackContext) => Promise<void>
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
-  readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null
+  readonly publish: readonly [{ readonly provider: 'generic', readonly url: string } | {
+    readonly provider: 'github', readonly owner: string, readonly repo: string, readonly releaseType: 'draft'
+  }] | null
 }
 
 /**

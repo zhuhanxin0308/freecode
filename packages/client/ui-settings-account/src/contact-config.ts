@@ -7,6 +7,8 @@ export interface ContactConfig {
   contactFormUrl: string
   /** Questionnaire source option; empty until Harness is supported by the form. */
   contactSource: string
+  /** 只有明确启用时，反馈链接才携带账号和设备信息。 */
+  contactIncludeContext: boolean
   /** First delay before retrying a failed bonus acknowledgement. */
   bonusAckRetryDelayMs: number
   /** Ceiling for the acknowledgement retry backoff. */
@@ -14,8 +16,9 @@ export interface ContactConfig {
 }
 /** Validate public questionnaire options. */
 export const ContactConfigFields = {
-  contactFormUrl: z.string().pattern(/^https:\/\/[^/\s]+\//).default('https://trtgsjkv6r.feishu.cn/share/base/form/shrcnlCoGElW7MQznGy9r3YYXcg?hide_uid=1&hide_device_info=1&hide_harness_version=1'),
+  contactFormUrl: z.string().pattern(/^https:\/\/[^/\s]+\//).default('https://github.com/zhuhanxin0308/freecode/issues/new'),
   contactSource: z.string().default(''),
+  contactIncludeContext: z.boolean().default(false),
   bonusAckRetryDelayMs: z.number().min(1).default(1_000),
   bonusAckRetryMaxDelayMs: z.number().min(1).default(60_000),
 }

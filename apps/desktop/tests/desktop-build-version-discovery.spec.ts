@@ -35,6 +35,12 @@ describe('desktop build version discovery', () => {
       .resolves.toBe(`${PRERELEASE}.${DATE}.1`)
   })
 
+  it('识别 freecode 安装包，避免重复使用已有构建编号', async () => {
+    const artifactsRoot = await artifactsWith([`freecode-${PRERELEASE}.${DATE}.4-win-x64-unsigned.exe`])
+    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'win-x64', environment: {}, date: DATE, artifactsRoot }))
+      .resolves.toBe(`${PRERELEASE}.${DATE}.5`)
+  })
+
   it('numbers a stable product version under the documented test prerelease', async () => {
     const artifactsRoot = await artifactsWith([`deepseek-harness-${STABLE}-test.${DATE}.4-win-x64.exe`])
     await expect(suggestDesktopBuildVersion({ productVersion: STABLE, target: 'win-x64', environment: {}, date: DATE, artifactsRoot }))

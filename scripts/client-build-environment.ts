@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { PRODUCT_BRAND } from '../apps/desktop/src/product-brand.ts'
 
 /** Prefix reserved for build-time values that may be embedded in browser artifacts. */
 const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
@@ -19,7 +20,7 @@ export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 /** Public client environment required by official DSH artifacts. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
+  DSH_CLIENT_TITLE: PRODUCT_BRAND.name,
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -125,6 +126,7 @@ export function repositoryClientBuildEnvironment(
   delete inherited.DSH_CLIENT_VERSION
   const dirty = repositoryGitDirty(root)
   return {
+    DSH_CLIENT_TITLE: PRODUCT_BRAND.name,
     ...inherited,
     DSH_CLIENT_COMMIT_HASH: repositoryCommitHash(root, environment),
     ...(dirty === true ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),

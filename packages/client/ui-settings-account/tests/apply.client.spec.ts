@@ -91,7 +91,7 @@ it('claims account balance notices from the frame-wide quota chain and declines 
 }, 60_000)
 
 it('shares account actions across seats, publishes dialog ownership, and opens contextual support', async ({ start }) => {
-  vi.stubGlobal(CONTACT_CONFIG_GLOBAL, { contactFormUrl: 'https://example.test/form/?prefill_device_model=old&hide_device_model=1', contactSource: 'harness' })
+  vi.stubGlobal(CONTACT_CONFIG_GLOBAL, { contactFormUrl: 'https://example.test/form/?prefill_device_model=old&hide_device_model=1', contactSource: 'harness', contactIncludeContext: true })
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   vi.stubGlobal('dshDesktop', {})
   const c = await start()
@@ -154,6 +154,7 @@ it('shares account actions across seats, publishes dialog ownership, and opens c
 }, 60_000)
 
 it('prefills the native device description from the Desktop bridge on every click', async ({ start }) => {
+  vi.stubGlobal(CONTACT_CONFIG_GLOBAL, { contactIncludeContext: true })
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const deviceInfo = vi.fn(async () => 'platform=darwin; os=15.0; app_arch=arm64; cpu=Apple M3; memory_gib=16.0')
   vi.stubGlobal('dshDesktop', { deviceInfo })
@@ -176,6 +177,7 @@ it('prefills the native device description from the Desktop bridge on every clic
 }, 60_000)
 
 it('opens the questionnaire with screen resolution when the native read fails', async ({ start }) => {
+  vi.stubGlobal(CONTACT_CONFIG_GLOBAL, { contactIncludeContext: true })
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const deviceInfo = vi.fn(async (): Promise<string> => { throw new Error('platform ipc unavailable') })
   vi.stubGlobal('dshDesktop', { deviceInfo })
@@ -190,6 +192,7 @@ it('opens the questionnaire with screen resolution when the native read fails', 
 }, 60_000)
 
 it('reports the account sampled by the click when a native read outlasts a sign-out', async ({ start }) => {
+  vi.stubGlobal(CONTACT_CONFIG_GLOBAL, { contactIncludeContext: true })
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const device = Promise.withResolvers<string>()
   vi.stubGlobal('dshDesktop', { deviceInfo: vi.fn(() => device.promise) })
@@ -204,6 +207,16 @@ it('reports the account sampled by the click when a native read outlasts a sign-
   device.resolve('platform=darwin; os=15.0; app_arch=arm64; memory_gib=16.0')
   await vi.waitFor(() => { expect(open).toHaveBeenCalledOnce() })
   expect(new URL(String(open.mock.calls.at(-1)![0])).searchParams.get('prefill_uid')).toBe('account-user')
+}, 60_000)
+
+it('默认反馈入口不读取设备信息，只打开 free code 仓库', async ({ start }) => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  const deviceInfo = vi.fn(async () => 'private-device')
+  vi.stubGlobal('dshDesktop', { deviceInfo })
+  const c = await start()
+  operations(c).contactUs()
+  expect(open).toHaveBeenCalledWith('https://github.com/zhuhanxin0308/freecode/issues/new', '_blank', 'noopener,noreferrer')
+  expect(deviceInfo).not.toHaveBeenCalled()
 }, 60_000)
 
 it('publishes one avatar load and retries it through the shared Settings refresh action', async ({ start }) => {
