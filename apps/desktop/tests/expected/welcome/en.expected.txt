@@ -2,5 +2,5 @@ free code
 free code
 Welcome to free code
 Build on your terms.
-Sign in with DeepSeek
+Sign in with free code SSO
 Add API Key

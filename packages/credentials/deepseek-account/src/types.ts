@@ -33,9 +33,13 @@ export interface SignInAttemptView {
 export interface AccountLinks {
   readonly usageUrl: string
   readonly topUpUrl: string
+  /** 公开账号网页通过浏览器自己的会话访问，禁止注入主机令牌。 */
+  readonly external?: boolean
 }
 /** Stored-account presence is not a claim that the server has validated its token. */
 export interface AccountView {
+  /** 独立账号提供方，省略时保留旧平台兼容投影。 */
+  readonly provider?: 'freecode'
   readonly status: 'signed-out' | 'credential-stored'
   readonly links: AccountLinks
   readonly attempt: SignInAttemptView | null
@@ -59,7 +63,7 @@ export interface AccountWallet {
 /** Independent query outcomes allow profile and balance failures to render separately. */
 export interface AccountDetails {
   readonly profile: { readonly status: 'ready'; readonly value: AccountProfile } | { readonly status: 'failed' }
-  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[] } | { readonly status: 'failed' }
+  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[]; readonly points?: { readonly availableUnits: string; readonly heldUnits: string; readonly unitsPerPoint: string } } | { readonly status: 'failed' }
 }
 
 /** Identity of one granted bonus order; stable across devices and sign-ins. */

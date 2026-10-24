@@ -1,1 +1,1 @@
-Add creditsDeepSeek Harness charges credits based on the tokens used by models and tools. Add credits in advance to keep your tasks running without interruption. Your balance is only used while the agent is working on a task.Add creditsNextBackSkip
+Platform pointsPlatform models charge points for input, output, and cached tokens. Points are reserved before a request and settled against actual usage. View points in your account portal. Your own API keys and local browsing do not require platform points.Open account portalNextBackSkip

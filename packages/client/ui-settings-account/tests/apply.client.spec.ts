@@ -63,6 +63,31 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
+it('free code 账号中心在系统浏览器打开，返回时刷新且释放后不留下监听', async ({ start }) => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  const platform = { open: vi.fn(), setBounds: vi.fn(), close: vi.fn() }
+  vi.stubGlobal('dshDesktop', {})
+  vi.stubGlobal('dshPlatform', platform)
+  const c = await start()
+  const actions = operations(c)
+  c.mock.remote.account.getProfile.mockResolvedValue(ok(profile))
+  const account: AccountView = { ...stored, provider: 'freecode',
+    links: { usageUrl: 'https://freecode.mymyjd.cn/account', topUpUrl: 'https://freecode.mymyjd.cn/account', external: true } }
+  c.mock.streams.push('account/watch', account)
+  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().view).toEqual(account) })
+  const returned = vi.fn()
+  const release = actions.openPlatformPage!('usage', returned)
+  expect(open).toHaveBeenCalledWith(account.links.usageUrl, '_blank', 'noopener,noreferrer')
+  expect(platform.open).not.toHaveBeenCalled()
+  window.dispatchEvent(new Event('focus'))
+  expect(returned).toHaveBeenCalledWith('returned')
+  release()
+  const releaseBeforeReturn = actions.openPlatformPage!('usage', returned)
+  releaseBeforeReturn()
+  window.dispatchEvent(new Event('focus'))
+  expect(returned).toHaveBeenCalledOnce()
+}, 60_000)
+
 it('registers account sign-in in a plain browser without the Desktop-only surfaces, including after reload', async ({ start }) => {
   const c = await start()
   for (const reload of [false, true]) {

@@ -19,6 +19,10 @@ const configWith = (model: Record<string, unknown>): (() => unknown) =>
   routeWith({ models: [{ id: 'm', ...model }] })
 
 describe('reasoning schema boundary', () => {
+  it('平台账号配置默认关闭，BYOK 路由无需平台地址', () => {
+    expect(Config({}).freecode).toBeUndefined()
+    expect(() => Config({ freecode: {} })).toThrow()
+  })
   it('accepts an empty provider section and propagates unexpected catalog failures', () => {
     expect(() => { assertServiceable({}) }).not.toThrow()
     const failure = new TypeError('model metadata lookup failed')

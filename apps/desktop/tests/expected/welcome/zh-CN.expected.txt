@@ -2,5 +2,5 @@ free code
 free code
 欢迎使用 free code
 自由构建，由你掌控。
-使用 DeepSeek 账号登录
+使用 free code SSO 登录
 添加 API Key

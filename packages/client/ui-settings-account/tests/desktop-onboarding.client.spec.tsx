@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { DesktopOnboarding } from '../src/client/DesktopOnboarding.tsx'
@@ -283,7 +283,7 @@ it('traps Tab in confirmation, closes it, and keeps the selected page', async ()
 it('opens recharge directly from a credit warning', async () => {
   const h = mount('credit', 'zero')
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: zh.onboardingLater })) })
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: zh.onboardingGoTopUp })) })
+  await act(async () => { fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: zh.onboardingGoTopUp })) })
   expect(h.openPlatformPage).toHaveBeenCalledWith('top-up', expect.any(Function))
   expect(screen.queryByRole('dialog', { name: zh.onboardingNoCreditTitle })).toBeNull()
 })

@@ -220,6 +220,8 @@ export interface ResolvedPiAiProviderProfile
 
 /** Plugin configuration: the provider routes this instance owns. */
 export interface Config {
+  /** 独立平台账号模型；省略时仅提供用户配置的 BYOK 路由。 */
+  freecode?: { origin: string; modelsTimeoutMs: number; modelsMaxAgeMs: number; maxCatalogBytes: number; allowLoopbackHttp: boolean } | null
   /**
    * pi-ai provider routes, keyed by provider. An empty (or omitted) dict is
    * the dormant settings-driven posture: the adapter mounts with no routes
@@ -229,7 +231,7 @@ export interface Config {
 }
 
 /** Plain options accepted by the provider resolver. */
-export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : never }
+export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : Config[K] }
 
 const thinkingBudgets = z.object({
   minimal: z.number(),
@@ -351,6 +353,13 @@ const profile = z.object({
 /** Runtime schema for {@link Config}. */
 export const Config = z.object({
   providers: z.dict(profile).default({}).volatile(),
+  freecode: z.union([z.const(null), z.object({
+    origin: z.string().required(),
+    modelsTimeoutMs: z.number().min(1).max(120_000).default(30_000),
+    modelsMaxAgeMs: z.number().min(0).max(3_600_000).default(60_000),
+    maxCatalogBytes: z.number().min(1024).max(4_194_304).default(1_048_576),
+    allowLoopbackHttp: z.boolean().default(false),
+  })]).default(null),
 })
 
 /**

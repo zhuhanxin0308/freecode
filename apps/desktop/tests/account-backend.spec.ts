@@ -3,6 +3,14 @@ import { WebSocketServer } from 'ws'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { accountView, desktopAccountBackend } from '../src/account-backend.ts'
 
+it('保留 free code 外部账号页标记，拒绝未声明的提供方和页面模式', () => {
+  const state = { status: 'signed-out', attempt: null, provider: 'freecode',
+    links: { usageUrl: 'https://freecode.mymyjd.cn/account', topUpUrl: 'https://freecode.mymyjd.cn/account', external: true } }
+  expect(accountView({ ...state, token: 'private' })).toEqual(state)
+  expect(() => accountView({ ...state, provider: 'other' })).toThrow()
+  expect(() => accountView({ ...state, links: { ...state.links, external: 'yes' } })).toThrow()
+})
+
 it('projects only safe account fields and refuses non-browser authorization schemes', () => {
   const state = { links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', token: 'not-for-the-renderer',
     attempt: { id: 'test', phase: 'waiting-browser', authorizeUrl: 'https://platform.deepseek.com/dsh/authorize', codeVerifier: 'private' } }

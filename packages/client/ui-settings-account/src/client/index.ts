@@ -167,10 +167,18 @@ export function apply(ctx: Context): void {
    * @returns the opener that surface injects.
    */
   const platformPageOpener = (reRead: () => Promise<void>): PlatformPages['open'] =>
-    (page, onClose) => platformPages.open(page, (reason) => {
-      onClose(reason)
-      if (reason === 'returned' && page === 'top-up') void refreshAfterReturn(refreshing, reRead)
-    })
+    (page, onClose) => {
+      if (snapshot.view?.links.external) {
+        window.open(snapshot.view.links.usageUrl, '_blank', 'noopener,noreferrer')
+        const returned = () => { window.removeEventListener('focus', returned); onClose('returned'); void refreshAfterReturn(refreshing, reRead) }
+        window.addEventListener('focus', returned, { once: true })
+        return () => { window.removeEventListener('focus', returned) }
+      }
+      return platformPages.open(page, (reason) => {
+        onClose(reason)
+        if (reason === 'returned' && page === 'top-up') void refreshAfterReturn(refreshing, reRead)
+      })
+    }
   const operations: AccountSectionInjected = {
     avatarFailed: (value) => { avatar.failed(value) },
     subscribeSessionExpired: listener => ctx.remote.$on('deepseek-account/session-expired', listener),

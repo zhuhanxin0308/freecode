@@ -8,5 +8,7 @@ import type { AccountSnapshot } from './AccountSection.tsx'
  * @returns whether either wallet group has positive credit.
  */
 export function hasOnboardingCredit(balance: NonNullable<AccountSnapshot['details']>['balance']): boolean {
-  return balance?.status === 'ready' && [...balance.value, ...balance.bonusWallets].some(wallet => new Big(wallet.balance).gt(0))
+  return balance?.status === 'ready' && (balance.points !== undefined
+    ? new Big(balance.points.availableUnits).gt(0)
+    : [...balance.value, ...balance.bonusWallets].some(wallet => new Big(wallet.balance).gt(0)))
 }

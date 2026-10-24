@@ -652,7 +652,7 @@ export class PlatformAccount extends DeepSeekAccount {
     }
   }
 }
-export default PlatformAccount
+export { FreeCodeAccount as default } from './freecode.ts'
 
 /** OS identification shared by login and credential-free identity reads. */
 function deviceOsVersion(): string {

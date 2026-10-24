@@ -18,6 +18,20 @@ import type { AccountAvatarSnapshot } from '../src/client/account-avatar.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
+it('free code 积分保留精度，不显示货币符号或赠金钱包', () => {
+  mount({ status: 'credential-stored', attempt: null, provider: 'freecode' }, zh, {
+    profile: { status: 'ready', value: { id: null, name: 'Blue', contact: 'blues' } },
+    balance: { status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '1234567', heldUnits: '2000000', unitsPerPoint: '1000000' } },
+  })
+  expect(screen.getByText('可用积分')).toBeTruthy()
+  expect(screen.getByText('1.234567')).toBeTruthy()
+  expect(screen.getByText('预留积分')).toBeTruthy()
+  expect(screen.getByText('2')).toBeTruthy()
+  expect(screen.queryByText('赠金余额')).toBeNull()
+  expect(screen.queryByText('充值')).toBeNull()
+  expect(screen.getByRole('link', { name: '账号中心' })).toBeTruthy()
+})
+
 /** One resolved theme snapshot per scheme; the slot's theme hook serves these in the application. */
 const themeOf = (colorScheme: 'light' | 'dark'): ThemeSnapshot => ({
   preference: colorScheme, fontSizes: { text: 14, code: 11, terminal: 13 }, fontFamilies: { text: '', code: '', terminal: '' },

@@ -3,8 +3,14 @@
 # so no port is ever committed here.
 - id: deepseek-account
   config:
-    platformOrigin: "{{origin}}"
+    origin: "{{origin}}"
+    authorizationOrigin: "{{origin}}"
     allowLoopbackHttp: true
+- id: llm-pi-ai
+  config:
+    freecode:
+      origin: "{{origin}}"
+      allowLoopbackHttp: true
 # The scenario signs in from the account menu after initial setup.
 - id: ui-settings-account
   config:

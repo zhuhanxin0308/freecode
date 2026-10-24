@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { randomInt } from 'node:crypto'
 import { zstdDecompressSync } from 'node:zlib'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 
@@ -13,6 +14,9 @@ export interface MockServer {
 }
 
 const servers: Server[] = []
+const EPHEMERAL_PORT_START = 49152
+const PORT_EXCLUSIVE_END = 65536
+const MAX_PORT_BIND_ATTEMPTS = 64
 
 /** Close every listener and connection opened since the last call; run from each spec's afterEach. */
 export async function closeMockServers(): Promise<void> {
@@ -120,7 +124,23 @@ export async function mockServer(script: {
     })
   })
   servers.push(server)
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  // 直接取得端口；Windows 的系统保留/独占端口可能返回 EACCES，重选次数有限。
+  for (let attempt = 0; attempt < MAX_PORT_BIND_ATTEMPTS; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(randomInt(EPHEMERAL_PORT_START, PORT_EXCLUSIVE_END), '127.0.0.1', () => {
+          server.removeListener('error', reject)
+          resolve()
+        })
+      })
+      break
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error)
+        || !(error.code === 'EADDRINUSE' || process.platform === 'win32' && error.code === 'EACCES')
+        || attempt === MAX_PORT_BIND_ATTEMPTS - 1) throw error
+    }
+  }
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('no port')
   return {

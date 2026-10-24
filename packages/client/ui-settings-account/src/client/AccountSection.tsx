@@ -100,6 +100,8 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
   const [busy, setBusy] = useState(false)
   const profile = details?.profile?.status === 'ready' ? details.profile.value : undefined
   const wallets = details?.balance?.status === 'ready' ? details.balance.value : undefined
+  const points = details?.balance?.status === 'ready' ? details.balance.points : undefined
+  const freecode = state?.provider === 'freecode'
   const bonusWallets = details?.balance?.status === 'ready'
     ? details.balance.bonusWallets.filter(wallet => new Big(wallet.balance).gt(0)) : []
   const showBonusRow = details?.balance?.status !== 'ready' || bonusWallets.length > 0
@@ -127,7 +129,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
    * @returns nothing; on Desktop the embedded page replaces the pending navigation.
    */
   const openUsage = (event: MouseEvent<HTMLAnchorElement>): void => {
-    if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'usage') }
+    if (openPlatformPage !== undefined && signedIn && !state.links.external) { event.preventDefault(); showPage(openPlatformPage, 'usage') }
   }
   /**
    * The Platform entry the balance rows share with the Usage action: an embedded page on
@@ -172,7 +174,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
             <span className={css.status} role="status">{status}</span>
           </div>
         </div>
-        {signedIn && <a className={css.accountInfo} href={new URL('/', state.links.usageUrl).href} target="_blank" rel="noopener noreferrer">
+        {signedIn && <a className={css.accountInfo} href={state.links.external ? state.links.usageUrl : new URL('/', state.links.usageUrl).href} target="_blank" rel="noopener noreferrer">
           {t('accountInfo')}<IconRightUpOutlineRegular size={12} />
         </a>}
       </div>
@@ -186,16 +188,22 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
       </div>}
       <div className={css.balanceCard}>
         <div className={css.row}>
-          <span>{t('balance')}</span>
-          {signedIn && wallets !== undefined && wallets.length > 0
-            ? <span className={css.amount}>{wallets.map(wallet => <span key={wallet.currency}>
-              {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
-            </span>)}</span>
-            : !signedIn || details?.balance === undefined
-              ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
-              : platformLink(t('balanceUnavailable'), css.unavailableLink)}
+          <span>{t(freecode ? 'points' : 'balance')}</span>
+          {signedIn && points !== undefined
+            ? <span className={css.amount}>{new Big(points.availableUnits).div(points.unitsPerPoint).toFixed()}</span>
+            : signedIn && wallets !== undefined && wallets.length > 0
+              ? <span className={css.amount}>{wallets.map(wallet => <span key={wallet.currency}>
+                {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
+              </span>)}</span>
+              : !signedIn || details?.balance === undefined
+                ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
+                : platformLink(t('balanceUnavailable'), css.unavailableLink)}
         </div>
-        {signedIn && showBonusRow && <>
+        {signedIn && points !== undefined && <>
+          <div className={css.divider} />
+          <div className={css.row}><span>{t('heldPoints')}</span><span className={css.amount}>{new Big(points.heldUnits).div(points.unitsPerPoint).toFixed()}</span></div>
+        </>}
+        {signedIn && !freecode && showBonusRow && <>
           <div className={css.divider} />
           <div className={css.row}>
             <span>{t('bonusBalance')}</span>
@@ -214,10 +222,10 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
         <div className={css.row}>
           <span className={css.secondary}>{t('more')}</span>
           <div className={css.links}>
-            {platformLink(t('usage'), css.linkButton)}
-            <a className={`${css.linkButton} ${css.primary}`} href={state?.links.topUpUrl} aria-disabled={state === undefined}
+            {platformLink(t(freecode ? 'accountPortal' : 'usage'), css.linkButton)}
+            {!freecode && <a className={`${css.linkButton} ${css.primary}`} href={state?.links.topUpUrl} aria-disabled={state === undefined}
               target="_blank" rel="noreferrer"
-              onClick={(event) => { if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'top-up') } }}>{t('topUp')}</a>
+              onClick={(event) => { if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'top-up') } }}>{t('topUp')}</a>}
           </div>
         </div>
       </div>

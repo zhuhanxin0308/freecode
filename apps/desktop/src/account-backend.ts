@@ -20,6 +20,8 @@ export function accountView(value: unknown): AccountView {
   }
   validateBrowserDestination(value.links.usageUrl)
   validateBrowserDestination(value.links.topUpUrl)
+  if ('provider' in value && value.provider !== 'freecode') throw new Error('desktop account: invalid provider')
+  if ('external' in value.links && typeof value.links.external !== 'boolean') throw new Error('desktop account: invalid link mode')
   const attempt = value.attempt
   if (attempt !== null && (typeof attempt !== 'object' || !('id' in attempt) || typeof attempt.id !== 'string'
     || !('phase' in attempt) || !['initializing', 'waiting-browser', 'exchanging', 'committing', 'succeeded', 'cancelled', 'expired', 'failed'].includes(String(attempt.phase))
@@ -34,7 +36,9 @@ export function accountView(value: unknown): AccountView {
   const parsed = value as AccountView
   return {
     status: parsed.status,
-    links: { usageUrl: parsed.links.usageUrl, topUpUrl: parsed.links.topUpUrl },
+    ...parsed.provider === undefined ? {} : { provider: parsed.provider },
+    links: { usageUrl: parsed.links.usageUrl, topUpUrl: parsed.links.topUpUrl,
+      ...parsed.links.external === undefined ? {} : { external: parsed.links.external } },
     attempt: parsed.attempt === null ? null : {
       id: parsed.attempt.id, phase: parsed.attempt.phase,
       ...parsed.attempt.authorizeUrl === undefined ? {} : { authorizeUrl: parsed.attempt.authorizeUrl },

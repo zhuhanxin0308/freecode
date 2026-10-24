@@ -1,1 +1,1 @@
-当前未登录 DeepSeek Harness 账号登录 DeepSeek Harness 账号获取专属 API Key登录
+当前未登录 free code 账号通过 SSO 登录查看积分并使用平台模型，也可独立使用自己的 API Key。登录
