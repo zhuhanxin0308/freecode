@@ -26,6 +26,10 @@ async function mockPlatform() {
   let avatarRequests = 0
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if (req.method === 'GET' && req.headers['content-type'] === 'application/json') {
+      res.writeHead(400).end('Bad Request')
+      return
+    }
     const reply = (payload: unknown): void => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(payload))

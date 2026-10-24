@@ -46,6 +46,7 @@ async function fixture(options: { attemptTimeoutMs?: number; logoutMaxRetries?: 
   let rejected = false
   let logoutFailed = false
   let invalidAuthorization = false
+  let rejectEmptyJSONGet = false
   const overrides = new Map<string, { status: number; body: string }[]>()
   const holds = new Map<string, { entered: ReturnType<typeof barrier>; release: ReturnType<typeof barrier>; body: boolean }>()
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
@@ -57,6 +58,10 @@ async function fixture(options: { attemptTimeoutMs?: number; logoutMaxRetries?: 
       buffers.push(value)
     }
     const body = buffers.length ? JSON.parse(Buffer.concat(buffers).toString()) as Record<string, string> : {}
+    if (rejectEmptyJSONGet && req.method === 'GET' && req.headers['content-type'] === 'application/json' && buffers.length === 0) {
+      res.writeHead(400).end('Bad Request')
+      return
+    }
     res.setHeader('content-type', 'application/json')
     const hold = holds.get(req.url ?? '')
     if (hold !== undefined && !hold.body) { hold.entered.resolve(); await hold.release.promise }
@@ -128,6 +133,7 @@ async function fixture(options: { attemptTimeoutMs?: number; logoutMaxRetries?: 
     await expect.poll(async () => (await ctx.deepseekAccount.getState()).attempt?.phase).toBe('succeeded')
   }
   return { ctx, origin, requests, login, callbackOrigin, provider, home, webFiber,
+    rejectEmptyJSONGet: () => { rejectEmptyJSONGet = true },
     hold: (path: string, body = false) => {
       const hold = { entered: barrier(), release: barrier(), body }
       holds.set(path, hold)
@@ -162,6 +168,14 @@ it('浏览器登录只保存 free code 凭据，积分独立投影且不传给�
   expect(await f.ctx.deepseekAccount.ackBonusNotified('3' as AccountUserId, 'legacy' as AccountBonusOrderId, client)).toBe(false)
   expect(f.requests.every(request => !request.path.includes('auth-api') && !request.path.includes('bonus'))).toBe(true)
   expect(f.requests.filter(r => ['/v1/me', '/v1/points'].includes(r.path)).every(r => r.auth === `Bearer ${token}`)).toBe(true)
+})
+
+it('无请求体的资料和积分 GET 不声明 JSON 请求体，兼容服务端严格解析', async () => {
+  const f = await fixture()
+  await f.login()
+  f.rejectEmptyJSONGet()
+  expect(await f.ctx.deepseekAccount.getProfile(client)).toMatchObject({ status: 'ready', value: { name: 'Blue' } })
+  expect(await f.ctx.deepseekAccount.getBalance(client)).toMatchObject({ status: 'ready', points: { availableUnits: '1234567' } })
 })
 
 it('错误 state 不消费登录，取消后回调不再写入凭据', async () => {

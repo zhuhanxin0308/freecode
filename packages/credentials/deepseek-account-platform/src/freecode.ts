@@ -312,7 +312,8 @@ export class FreeCodeAccount extends DeepSeekAccount {
     try {
       response = await fetch(`${this.origin}${path}`, { method: body === undefined ? 'GET' : 'POST',
         redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.requestTimeoutMs)]),
-        headers: { 'content-type': 'application/json', ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
+        headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
     } catch { throw new PlatformAuthError('no-response') }
     if (response.status === 401) { await response.body?.cancel(); throw new Unauthorized() }
