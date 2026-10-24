@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { FreeCodeAdapter, registerFreeCode } from '../src/freecode.ts'
@@ -6,11 +6,16 @@ import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
 const cleanups: Array<() => Promise<unknown>> = []
-afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); await closeMockServers() })
+afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); await closeMockServers(); vi.restoreAllMocks() })
 const token = 'test-platform-token'
 const model = { id: 'platform-model', name: '平台模型', protocol: 'chat_completions', max_input_tokens: 32768, max_output_tokens: 1024 }
 const listing = JSON.stringify({ data: [model] })
 const message = createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'model', provider: 'test', model: 'test' } })
+
+function barrier() {
+  const gate = Promise.withResolvers<undefined>()
+  return { promise: gate.promise, resolve: () => { gate.resolve(undefined) } }
+}
 
 async function fixture(origin: string, available = true) {
   let current: string | undefined = available ? token : undefined
@@ -30,7 +35,7 @@ async function fixture(origin: string, available = true) {
   const plugin = ctx.plugin({ inject: ['llm'], apply: (context: Context) => { registerFreeCode(context, deployment) } })
   await plugin
   cleanups.push(() => plugin.dispose())
-  return { ctx, deployment, replace: () => { current = 'different-token' } }
+  return { ctx, deployment, plugin, replace: () => { current = 'different-token' } }
 }
 
 it('平台 Chat 调用发送 Bearer 和输出上限，模型目录不泄露凭据', async () => {
@@ -106,4 +111,92 @@ it.each([401, 503])('模型目录 %s 失败不会返回其他账号缓存', asyn
   const f = await fixture(server.url)
   const adapter = new FreeCodeAdapter(f.ctx, f.deployment)
   await expect(adapter.listModels('deepseek-account')).rejects.toMatchObject({ code: status === 401 ? 'ACCOUNT_TOKEN_INVALID' : 'ACCOUNT_CATALOG_UNAVAILABLE' })
+})
+
+it.each([
+  { status: 204, body: '' },
+  { status: 200, body: '{}' },
+  { status: 200, body: ' '.repeat(65537) },
+])('拒绝空目录或越界目录：$status/$body.length', async ({ status, body }) => {
+  const server = await mockServer([{ status, body }])
+  const f = await fixture(server.url)
+  const adapter = new FreeCodeAdapter(f.ctx, f.deployment)
+  await expect(adapter.listModels('deepseek-account')).rejects.toMatchObject({ code: 'ACCOUNT_CATALOG_INVALID' })
+})
+
+it('同时查询同一账号共享目录请求，单个调用者取消不影响其他调用者', async () => {
+  const release = barrier()
+  cleanups.push(() => { release.resolve(); return Promise.resolve() })
+  const server = await mockServer([{ body: listing, beforeReply: release.promise }])
+  const f = await fixture(server.url)
+  const adapter = new FreeCodeAdapter(f.ctx, f.deployment)
+  const cancellation = new AbortController()
+  const first = adapter.resolveModel('deepseek-account', model.id, cancellation.signal)
+  const cancelled = expect(first).rejects.toThrow()
+  await server.requestReceived
+  const second = adapter.listModels('deepseek-account')
+  cancellation.abort()
+  await cancelled
+  release.resolve()
+  expect(await second).toEqual([{ provider: 'deepseek-account', id: model.id, name: model.name }])
+  expect(server.paths).toEqual(['/v1/models'])
+})
+
+it('目录响应到达前切换账号时拒绝旧目录，新账号可以独立加载', async () => {
+  const release = barrier()
+  cleanups.push(() => { release.resolve(); return Promise.resolve() })
+  const server = await mockServer([{ body: listing, beforeReply: release.promise }, { body: listing }])
+  const f = await fixture(server.url)
+  const adapter = new FreeCodeAdapter(f.ctx, f.deployment)
+  const old = adapter.listModels('deepseek-account')
+  const refused = expect(old).rejects.toMatchObject({ code: 'ACCOUNT_TOKEN_INVALID' })
+  await server.requestReceived
+  f.replace()
+  expect(await adapter.listModels('deepseek-account')).toHaveLength(1)
+  release.resolve()
+  await refused
+  expect(server.headers.map(headers => headers.authorization)).toEqual([`Bearer ${token}`, 'Bearer different-token'])
+})
+
+it('插件卸载中止正在加载的目录并等待连接释放', async () => {
+  const server = await mockServer([{ events: ['{"data":['], holdOpen: true }])
+  const f = await fixture(server.url)
+  const models = f.ctx.llm.listModels('deepseek-account')
+  const rejected = expect(models).rejects.toThrow()
+  await server.requestReceived
+  await f.plugin.dispose()
+  await rejected
+  await server.responseClosed
+  expect(server.closedResponses).toBe(1)
+})
+
+it('目录正文读取被取消时，清理读取器的拒绝不会泄漏未处理异常', async () => {
+  const server = await mockServer([{ events: ['{"data":['], holdOpen: true }])
+  const f = await fixture(server.url)
+  const reading = barrier()
+  const nativeFetch = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await nativeFetch(input, init)
+    if (response.body === null) throw new Error('missing streaming body')
+    const getReader = response.body.getReader.bind(response.body)
+    vi.spyOn(response.body, 'getReader').mockImplementation(() => {
+      const reader = getReader()
+      const read = reader.read.bind(reader)
+      let count = 0
+      vi.spyOn(reader, 'read').mockImplementation(() => {
+        const pending = read()
+        if (++count === 2) reading.resolve()
+        return pending
+      })
+      return reader
+    })
+    return response
+  })
+  const models = f.ctx.llm.listModels('deepseek-account')
+  const rejected = expect(models).rejects.toThrow()
+  await reading.promise
+  await f.plugin.dispose()
+  await rejected
+  await server.responseClosed
+  expect(server.closedResponses).toBe(1)
 })

@@ -32,7 +32,19 @@ describe('dsh-base bundle', () => {
     )
     expect(rows.length).toBeGreaterThan(50)
     expect(rows.some(row => row.id === 'agent-loop')).toBe(true)
-    expect(rows.find(row => row.id === 'session-telemetry-otel')?.disabled).toBeUndefined()
+    expect(rows.find(row => row.id === 'session-telemetry-otel')?.disabled).toEqual({
+      __jsExpr: '!process.env.FREECODE_TELEMETRY_OTLP_URL',
+    })
+    expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['exporter']).toMatchObject({
+      url: { __jsExpr: 'process.env.FREECODE_TELEMETRY_OTLP_URL' },
+    })
+    for (const [env, disabled] of [
+      [{}, true],
+      [{ DSH_TELEMETRY_OTLP_URL: 'https://legacy.example/logs' }, true],
+      [{ FREECODE_TELEMETRY_OTLP_URL: 'https://telemetry.freecode.example/logs' }, false],
+    ] as const) {
+      expect(evaluate({ process: { env } }, '!process.env.FREECODE_TELEMETRY_OTLP_URL')).toBe(disabled)
+    }
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['mode']).toEqual({
       __jsExpr: "process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'",
     })

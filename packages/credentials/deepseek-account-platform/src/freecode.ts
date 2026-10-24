@@ -355,17 +355,19 @@ export class FreeCodeAccount extends DeepSeekAccount {
         const received = url.searchParams.get('code')
         const valid = expectedState.length > 0 && Buffer.byteLength(state) === Buffer.byteLength(expectedState)
           && timingSafeEqual(Buffer.from(state), Buffer.from(expectedState))
-        const denied = url.searchParams.getAll('error').length === 1 && !received
+        const success = received !== null && received.length > 0 && url.searchParams.getAll('code').length === 1
+          && !url.searchParams.has('error')
+        const denied = url.searchParams.getAll('error').length === 1 && !url.searchParams.has('code')
         if (req.method !== 'GET' || !valid || url.searchParams.getAll('state').length !== 1
-          || (!denied && (!received || url.searchParams.getAll('code').length !== 1))) {
+          || (!success && !denied)) {
           res.writeHead(400, { 'cache-control': 'no-store' }).end(); return
         }
         if (signal.aborted || attempt.response !== undefined || attempt.view.phase !== 'waiting-browser') {
           res.writeHead(410, { 'cache-control': 'no-store' }).end(); return
         }
         attempt.response = res
-        if (denied) code.reject(new PlatformAuthError('protocol'))
-        else if (received !== null) code.resolve(received)
+        if (success) code.resolve(received)
+        else code.reject(new PlatformAuthError('protocol'))
       } }), 'freecode: 浏览器回调')
       const init = initSchema.parse(await this.request('/v1/auth/authorize', { redirect_uri: `${attempt.origin}/oauth/callback` }, signal))
       const authorization = new URL(init.authorize_url)
@@ -378,10 +380,12 @@ export class FreeCodeAccount extends DeepSeekAccount {
         if (redirect === null || authorization.searchParams.getAll('redirect').length !== 1) throw new PlatformAuthError('protocol')
         target = new URL(redirect, this.authorizationOrigin)
       }
+      const states = target.searchParams.getAll('state')
+      const state = states[0]
       if (target.origin !== this.authorizationOrigin || target.pathname !== '/authorize' || target.username || target.password || target.hash
-        || target.searchParams.getAll('state').length !== 1) throw new PlatformAuthError('protocol')
-      expectedState = target.searchParams.get('state') ?? ''
-      if (!expectedState || init.state !== undefined && init.state !== expectedState) throw new PlatformAuthError('protocol')
+        || !state || states.length !== 1) throw new PlatformAuthError('protocol')
+      expectedState = state
+      if (init.state !== undefined && init.state !== expectedState) throw new PlatformAuthError('protocol')
       const expiresAt = Math.min(init.expires_at, localExpiresAt)
       clearTimeout(timer)
       if (expiresAt <= Date.now()) throw new PlatformAuthError('expired')
@@ -392,8 +396,12 @@ export class FreeCodeAccount extends DeepSeekAccount {
       signal.throwIfAborted()
       this.update(attempt, { phase: 'exchanging' })
       const result = exchangeSchema.parse(await this.request('/v1/auth/exchange', { attempt_id: init.attempt_id, state: expectedState, code: received }, signal))
-      if (Date.now() >= expiresAt || result.expires_at <= Date.now()) throw new PlatformAuthError('expired')
-      signal.throwIfAborted()
+      if (Date.now() >= expiresAt || result.expires_at <= Date.now()) {
+        this.revoke(result.access_token)
+        throw new PlatformAuthError('expired')
+      }
+      try { signal.throwIfAborted() }
+      catch (error) { this.revoke(result.access_token); throw error }
       this.update(attempt, { phase: 'committing' })
       clearTimeout(timer)
       try { await session.commit({ kind: 'grant', payload: { version: 1, issuer: this.origin, token: result.access_token, expiresAt: result.expires_at, user: result.user } }) }

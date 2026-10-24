@@ -32,6 +32,7 @@ export class FreeCodeAdapter extends LlmAdapter {
   private readonly lifetime = new AbortController()
   private cached: Catalog | undefined
   private loading: { token: string; promise: Promise<Catalog> } | undefined
+  private readonly requests = new Set<Promise<Catalog>>()
 
   /** @param ctx - 账号服务与模型注册的拥有者。 @param deployment - 网关配置。 */
   constructor(private readonly ctx: Context, private readonly deployment: Deployment) {
@@ -40,7 +41,7 @@ export class FreeCodeAdapter extends LlmAdapter {
     if (url.username || url.password || url.pathname !== '/' || url.search || url.hash
       || !(url.protocol === 'https:' || deployment.allowLoopbackHttp && url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error('freecode: 网关必须为安全的 HTTP(S) origin')
     this.origin = url.origin
-    ctx.effect(() => async () => { this.lifetime.abort(); await this.loading?.promise.catch(() => undefined) }, 'freecode: 模型目录请求')
+    ctx.effect(() => async () => { this.lifetime.abort(); await Promise.allSettled(this.requests) }, 'freecode: 模型目录请求')
   }
 
   override providerInfo(provider: string) { return { id: provider, name: 'free code' } }
@@ -54,12 +55,13 @@ export class FreeCodeAdapter extends LlmAdapter {
 
   private async load(signal?: AbortSignal): Promise<Catalog> {
     const token = await this.token()
+    signal?.throwIfAborted()
     if (this.cached?.token === token && Date.now() - this.cached.at < this.deployment.modelsMaxAgeMs) return this.cached
     const signalForRequest = AbortSignal.any([
-      this.lifetime.signal, AbortSignal.timeout(this.deployment.modelsTimeoutMs), ...(signal === undefined ? [] : [signal]),
+      this.lifetime.signal, AbortSignal.timeout(this.deployment.modelsTimeoutMs),
     ])
-    if (this.loading?.token === token) return this.loading.promise
-    const promise = (async () => {
+    if (this.loading?.token === token) return this.waitForCatalog(this.loading.promise, signal)
+    const request = (async () => {
       const response = await fetch(`${this.origin}/v1/models`, { headers: { authorization: `Bearer ${token}` }, redirect: 'error', signal: signalForRequest })
       if (response.status === 401) { await response.body?.cancel(); await this.ctx.get('deepseekAccount')?.rejectToken(token); throw new LlmError('free code 登录已失效。', 'ACCOUNT_TOKEN_INVALID') }
       if (!response.ok) { await response.body?.cancel(); throw new LlmError('无法加载 free code 模型目录，请稍后重试。', 'ACCOUNT_CATALOG_UNAVAILABLE') }
@@ -82,9 +84,23 @@ export class FreeCodeAdapter extends LlmAdapter {
         return result
       } finally { await reader.cancel().catch(() => undefined); reader.releaseLock() }
     })()
-    const loading = { token, promise }
-    this.loading = loading
-    try { return await promise } finally { if (this.loading === loading) this.loading = undefined }
+    const promise = request.finally(() => {
+      this.requests.delete(promise)
+      if (this.loading?.promise === promise) this.loading = undefined
+    })
+    this.requests.add(promise)
+    this.loading = { token, promise }
+    return this.waitForCatalog(promise, signal)
+  }
+
+  private async waitForCatalog(request: Promise<Catalog>, signal: AbortSignal | undefined): Promise<Catalog> {
+    if (signal === undefined) return request
+    signal.throwIfAborted()
+    const cancelled = Promise.withResolvers<never>()
+    const abort = () => { cancelled.reject(signal.reason) }
+    signal.addEventListener('abort', abort, { once: true })
+    try { return await Promise.race([request, cancelled.promise]) }
+    finally { signal.removeEventListener('abort', abort) }
   }
 
   private delegate(catalog: Catalog, id: string): PiAiAdapter {

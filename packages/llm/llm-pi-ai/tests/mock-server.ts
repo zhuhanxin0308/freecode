@@ -72,6 +72,8 @@ export async function mockServer(script: {
   /** Keep the SSE response open after its scripted events until the client disconnects. */
   holdOpen?: boolean
   headers?: Record<string, string>
+  /** 在返回响应前等待测试屏障，用于确定性地验证并发和取消。 */
+  beforeReply?: Promise<void>
 }[]): Promise<MockServer> {
   const paths: string[] = []
   const requests: unknown[] = []
@@ -97,30 +99,35 @@ export async function mockServer(script: {
       headers.push(request.headers)
       requestReceived.resolve(undefined)
       const behavior = script.shift() ?? { status: 500, body: 'script exhausted' }
-      if (behavior.status !== undefined && behavior.status !== 200) {
-        response.writeHead(behavior.status, { 'content-type': 'application/json', ...behavior.headers })
-        response.end(behavior.body ?? '{}')
-        return
-      }
-      if (behavior.body !== undefined) {
-        response.writeHead(200, { 'content-type': 'application/json', ...behavior.headers })
-        response.end(behavior.body)
-        return
-      }
-      response.writeHead(200, { 'content-type': 'text/event-stream' })
-      response.flushHeaders()
-      let index = 0
-      const writeNext = (): void => {
-        const event = behavior.events?.[index++]
-        if (event === undefined) {
-          if (!behavior.holdOpen) response.end()
+      const respond = (): void => {
+        if (response.destroyed) return
+        if (behavior.status !== undefined && behavior.status !== 200) {
+          response.writeHead(behavior.status, { 'content-type': 'application/json', ...behavior.headers })
+          response.end(behavior.body ?? '{}')
           return
         }
-        response.write(typeof event === 'string' ? `data: ${event}\n\n` : `event: ${event.event}\ndata: ${event.data}\n\n`)
-        if (behavior.delayMs === undefined) writeNext()
-        else timer = setTimeout(writeNext, behavior.delayMs)
+        if (behavior.body !== undefined) {
+          response.writeHead(200, { 'content-type': 'application/json', ...behavior.headers })
+          response.end(behavior.body)
+          return
+        }
+        response.writeHead(200, { 'content-type': 'text/event-stream' })
+        response.flushHeaders()
+        let index = 0
+        const writeNext = (): void => {
+          const event = behavior.events?.[index++]
+          if (event === undefined) {
+            if (!behavior.holdOpen) response.end()
+            return
+          }
+          response.write(typeof event === 'string' ? `data: ${event}\n\n` : `event: ${event.event}\ndata: ${event.data}\n\n`)
+          if (behavior.delayMs === undefined) writeNext()
+          else timer = setTimeout(writeNext, behavior.delayMs)
+        }
+        writeNext()
       }
-      writeNext()
+      if (behavior.beforeReply === undefined) respond()
+      else void behavior.beforeReply.then(respond, () => { response.destroy() })
     })
   })
   servers.push(server)
