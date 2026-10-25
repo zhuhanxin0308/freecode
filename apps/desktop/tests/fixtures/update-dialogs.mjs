@@ -4,7 +4,7 @@ import { once } from 'node:events'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, protocol } from 'electron'
+import { app, BrowserWindow, nativeTheme, protocol } from 'electron'
 import { DesktopUpdateDialog } from '../../lib/types/update-dialog.js'
 import { DesktopUpdateOverlays } from '../../lib/types/update-overlay.js'
 import { DesktopBackgroundNotice } from '../../lib/types/background-notice.js'
@@ -26,7 +26,7 @@ export async function qualifyUpdateDialogs(root, fixture) {
   const screenshots = []
   protocol.handle('dsh-app', async request => {
     const name = new URL(request.url).pathname.slice(1)
-    assert.ok(['update-dialog.html', 'update-dialog.js', 'update-dialog.css', 'update-close.svg'].includes(name))
+    assert.ok(['update-dialog.html', 'update-dialog.js', 'update-dialog.css', 'update-close.svg', 'assets/window-material.css'].includes(name))
     const mime = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css'
       : name.endsWith('.svg') ? 'image/svg+xml' : 'text/html'
     return new Response(await readFile(new URL(`../../renderer/${name}`, import.meta.url)), { headers: { 'content-type': mime } })
@@ -63,7 +63,7 @@ export async function qualifyUpdateDialogs(root, fixture) {
         focused: document.activeElement.id, isolated: typeof window.require === 'undefined',
       })`)
       assert.deepEqual(view, { title: options.message, detail: options.detail, buttons: options.buttons,
-        width: 380, radius: '24px', primary: 'rgb(15, 17, 21)', focused: 'dialog', isolated: true })
+        width: 380, radius: '24px', primary: nativeTheme.shouldUseDarkColors ? 'rgb(183, 200, 255)' : 'rgb(48, 75, 182)', focused: 'dialog', isolated: true })
       assert.equal(await parent.webContents.executeJavaScript('getComputedStyle(document.body).filter'), 'none')
       assert.equal(f.installations.length, 0)
       assert.equal(await window.webContents.executeJavaScript(`
@@ -139,7 +139,9 @@ export async function qualifyUpdateDialogs(root, fixture) {
         const closedNotice = once(noticeWindow, 'closed', { signal: AbortSignal.timeout(10_000) })
         if (confirm) {
           const name = 'background-close-confirmation.png'
-          await noticeWindow.webContents.executeJavaScript(`Promise.all(document.getAnimations().map(animation => animation.finished))`)
+          // 背景弥散动画无限循环，只等待窗口与控件的有限过渡。
+          await noticeWindow.webContents.executeJavaScript(`Promise.all(document.getAnimations()
+            .filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished))`)
           await writeFile(join(root, name), (await noticeWindow.webContents.capturePage()).toPNG())
           screenshots.push(name)
           await noticeWindow.webContents.executeJavaScript("setTimeout(() => document.querySelector('.primary').click(), 0); undefined")

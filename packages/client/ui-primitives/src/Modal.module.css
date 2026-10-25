@@ -42,7 +42,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--dsw-radius-panel);
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--dsw-alias-ambient-panel-paint);
   box-shadow: var(--dsw-elevation-prominent);
   animation: modalEnter var(--ds-transition-duration) var(--ds-ease-in-out);
 }

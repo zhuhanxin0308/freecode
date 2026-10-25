@@ -12,13 +12,17 @@
     <title></title>
     <style>
       html, body { height: 100%; margin: 0; }
+      :root { color-scheme: light; --loading-ground: #f7f9ff; --loading-ink: #17223b; }
+      @media (prefers-color-scheme: dark) {
+        :root { color-scheme: dark; --loading-ground: #0d1220; --loading-ink: #f0f4ff; }
+      }
       body {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 10px;
-        background: Canvas;
-        color: CanvasText;
+        background: var(--loading-ground);
+        color: var(--loading-ink);
         font: 14px/22px system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       .spinner {
@@ -31,6 +35,7 @@
       }
       @keyframes spin { to { transform: rotate(360deg); } }
       @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+      @media (forced-colors: active) { body { background: Canvas; color: CanvasText; } }
     </style>
   </head>
   <body>

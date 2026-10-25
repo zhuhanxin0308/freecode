@@ -105,6 +105,8 @@
     "apps/web/tests/onboarding-deepseek-config.e2e.ts",
     "apps/web/tests/onboarding-native.e2e.ts",
     "apps/web/tests/desktop-onboarding.e2e.ts",
+    "apps/web/tests/native-window-material.e2e.ts",
+    "apps/web/tests/ambient-theme.e2e.ts",
     "apps/web/tests/bonus-notice.e2e.ts",
     "apps/web/tests/account-login.e2e.ts",
     "apps/web/tests/onboarding-usable-provider.e2e.ts",

@@ -1,11 +1,93 @@
-/* Shared tint for full-window Desktop surfaces; native material owns the blur. */
+/* 原生窗口共用的弥散底色；文字与控件始终位于装饰层上方。 */
 :root {
-  /* Native macOS vibrancy supplies the blur; this is only the foreground tint. */
-  --dsw-desktop-window-tint: color-mix(in srgb, rgb(255 255 255) 40%, transparent);
+  color-scheme: light;
+  --dsw-ambient-native-ground: #f7f9ff;
+  --dsw-ambient-native-ink: #17223b;
+  --dsw-ambient-native-muted: #526079;
+  --dsw-ambient-native-surface: rgb(255 255 255 / 86%);
+  --dsw-ambient-native-solid: #fff;
+  --dsw-ambient-native-field: rgb(255 255 255 / 66%);
+  --dsw-ambient-native-hover: #edf1ff;
+  --dsw-ambient-native-border: rgb(76 105 175 / 22%);
+  --dsw-ambient-native-action: #304bb6;
+  --dsw-ambient-native-action-hover: #253d99;
+  --dsw-ambient-native-on-action: #fff;
+  --dsw-ambient-native-error: #b42338;
+  --dsw-ambient-native-glow-opacity: 0.85;
+  --dsw-desktop-window-tint: var(--dsw-ambient-native-surface);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-ds-theme-source]) { --dsw-desktop-window-tint: color-mix(in srgb, rgb(24 25 28) 50%, transparent); }
+  :root:not([data-ds-theme-source]) {
+    color-scheme: dark;
+    --dsw-ambient-native-ground: #0d1220;
+    --dsw-ambient-native-ink: #f0f4ff;
+    --dsw-ambient-native-muted: #bbc8e1;
+    --dsw-ambient-native-surface: rgb(20 31 52 / 88%);
+    --dsw-ambient-native-solid: #141f34;
+    --dsw-ambient-native-field: rgb(8 15 31 / 64%);
+    --dsw-ambient-native-hover: #273755;
+    --dsw-ambient-native-border: rgb(156 177 239 / 25%);
+    --dsw-ambient-native-action: #b7c8ff;
+    --dsw-ambient-native-action-hover: #cfdaff;
+    --dsw-ambient-native-on-action: #0c1735;
+    --dsw-ambient-native-error: #ffb4bd;
+    --dsw-ambient-native-glow-opacity: 0.6;
+  }
 }
 
-body[data-ds-dark-theme] { --dsw-desktop-window-tint: color-mix(in srgb, rgb(24 25 28) 50%, transparent); }
+body {
+  isolation: isolate;
+  background: var(--dsw-ambient-native-ground);
+  color: var(--dsw-ambient-native-ink);
+}
+
+/* 渐变本身保持静态；合成层只做低频位移。 */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: -18%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--dsw-ambient-native-glow-opacity);
+  background:
+    radial-gradient(ellipse at 20% 28%, rgb(88 120 255 / 26%), transparent 49%),
+    radial-gradient(ellipse at 80% 75%, rgb(68 214 233 / 18%), transparent 48%);
+  animation: native-ambient-drift 28s ease-in-out infinite alternate;
+}
+
+body::after {
+  background: radial-gradient(ellipse at 72% 24%, rgb(176 123 245 / 23%), transparent 49%);
+  animation: native-ambient-counter 36s ease-in-out infinite alternate;
+}
+
+@keyframes native-ambient-drift {
+  from { transform: translate3d(-3%, 1%, 0) scale(1); }
+  to { transform: translate3d(4%, -3%, 0) scale(1.06); }
+}
+
+@keyframes native-ambient-counter {
+  from { transform: translate3d(2%, -3%, 0) scale(1.02); }
+  to { transform: translate3d(-4%, 4%, 0) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before, body::after { animation: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --dsw-ambient-native-surface: var(--dsw-ambient-native-solid);
+    --dsw-ambient-native-field: var(--dsw-ambient-native-solid);
+  }
+  body { background: var(--dsw-ambient-native-ground) !important; }
+  body::before, body::after { display: none; animation: none; }
+  main, input, .secondary { backdrop-filter: none !important; }
+}
+
+@media (forced-colors: active) {
+  body::before, body::after { display: none; animation: none; }
+  body, main { background: Canvas !important; color: CanvasText; }
+  main { box-shadow: none !important; border-color: CanvasText !important; }
+}

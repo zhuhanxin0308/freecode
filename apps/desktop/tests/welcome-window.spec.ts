@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
 import { needsWelcome, WELCOME_IPC } from '../src/welcome-api.ts'
 
@@ -7,10 +7,17 @@ const electron = vi.hoisted(() => ({
   create: vi.fn<(options: unknown) => ReturnType<typeof createWindow>>(),
   root: '/desktop-app',
   handlers: new Map<string, (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>>(),
+  dark: false,
+  themeListeners: new Set<() => void>(),
 }))
 vi.mock('electron', () => ({
   app: { getAppPath: () => electron.root },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
+  nativeTheme: {
+    get shouldUseDarkColors() { return electron.dark },
+    on: (_event: string, listener: () => void) => { electron.themeListeners.add(listener) },
+    removeListener: (_event: string, listener: () => void) => { electron.themeListeners.delete(listener) },
+  },
   ipcMain: {
     handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
       if (electron.handlers.has(name)) throw new Error(`duplicate IPC handler: ${name}`)
@@ -33,11 +40,24 @@ function createWindow() {
     isDestroyed: vi.fn().mockReturnValue(false),
     destroy: vi.fn(),
     show: vi.fn(),
+    setTitleBarOverlay: vi.fn<(options: { color?: string; symbolColor?: string; height?: number }) => void>(),
     once: vi.fn<(name: string, callback: () => void) => void>(),
   }
 }
 
-beforeEach(() => { electron.create.mockReset(); electron.handlers.clear() })
+beforeEach(() => { electron.create.mockReset(); electron.handlers.clear(); electron.dark = false })
+afterEach(() => {
+  try {
+    for (const result of electron.create.mock.results) {
+      if (result.type !== 'return' || result.value === undefined) continue
+      for (const [event, closed] of result.value.once.mock.calls) if (event === 'closed') closed()
+    }
+    expect(electron.themeListeners.size).toBe(0)
+  } finally {
+    electron.themeListeners.clear()
+    vi.unstubAllGlobals()
+  }
+})
 
 const operations = {
   analyticsEnabled: async () => true,
@@ -50,6 +70,49 @@ const operations = {
 }
 
 describe('desktop welcome window', () => {
+  it.each([false, true])('uses the initial Windows palette before showing the welcome window (dark=%s)', (dark) => {
+    electron.dark = dark
+    const overlay = welcomeWindowOptions('win32', resolveDesktopLocale('zh-CN')).titleBarOverlay
+    if (typeof overlay !== 'object') throw new Error('Missing Windows title bar overlay')
+    expect(overlay).toMatchObject({ color: '#00000000', height: 42 })
+    expect(overlay.symbolColor?.toLowerCase()).toBe(dark ? '#f9fafb' : '#0f1115')
+  })
+
+  it('updates the Windows palette and releases its theme listener on close', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'win32' })
+    const window = createWindow()
+    electron.create.mockReturnValue(window)
+    await openWelcomeWindow(resolveDesktopLocale('en'), operations)
+    expect(electron.themeListeners.size).toBe(1)
+    const updated = [...electron.themeListeners][0]!
+    for (const dark of [true, false]) {
+      electron.dark = dark
+      updated()
+      expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({
+        color: '#00000000', symbolColor: dark ? '#f9fafb' : '#0f1115', height: 42,
+      })
+    }
+    window.isDestroyed.mockReturnValue(true)
+    updated()
+    expect(window.setTitleBarOverlay).toHaveBeenCalledTimes(2)
+    window.once.mock.calls.find(([event]) => event === 'closed')![1]()
+    expect(electron.themeListeners.size).toBe(0)
+    // 已排队的主题回调在窗口关闭后也不能触碰原生窗口。
+    updated()
+    expect(window.setTitleBarOverlay).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['darwin', 'linux'])('does not install Windows palette handling on %s', async (platform) => {
+    vi.stubGlobal('process', { ...process, platform })
+    const window = createWindow()
+    electron.create.mockReturnValue(window)
+    await openWelcomeWindow(resolveDesktopLocale('en'), operations)
+    electron.dark = true
+    for (const updated of electron.themeListeners) updated()
+    expect(electron.themeListeners.size).toBe(0)
+    expect(window.setTitleBarOverlay).not.toHaveBeenCalled()
+  })
+
   it.each(['darwin', 'win32', 'linux'] as const)('keeps the %s preview fixed-size and sandboxed', (platform) => {
     const options = welcomeWindowOptions(platform, resolveDesktopLocale('zh-CN'))
     expect(options).toMatchObject({
@@ -99,6 +162,7 @@ describe('desktop welcome window', () => {
     await expect(openWelcomeWindow(resolveDesktopLocale('en'), operations)).rejects.toThrow('missing welcome document')
     expect(window.destroy).toHaveBeenCalledOnce()
     expect(electron.handlers.size).toBe(0)
+    expect(electron.themeListeners.size).toBe(0)
     expect(window.show).not.toHaveBeenCalled()
   })
 

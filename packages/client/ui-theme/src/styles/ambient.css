@@ -1,0 +1,156 @@
+/* free code 的全局光晕与表面令牌；正文、终端和代码仍使用不透明底色。 */
+body {
+  --dsw-ambient-ground: #f7f9ff;
+  --dsw-ambient-blue: rgb(88 120 255 / 24%);
+  --dsw-ambient-violet: rgb(176 123 245 / 20%);
+  --dsw-ambient-cyan: rgb(68 214 233 / 18%);
+  --dsw-ambient-duration: 36s;
+  --dsw-ambient-counter-duration: 48s;
+  --dsw-ambient-opacity: 1;
+  --dsw-alias-ambient-canvas: transparent;
+  --dsw-alias-ambient-workspace-fill: rgb(255 255 255 / 48%);
+  --dsw-alias-bg-base: #f7f9ff;
+  --dsw-alias-bg-layer-1: #f7f9ff;
+  --dsw-alias-bg-layer-2: #ffffff;
+  --dsw-alias-bg-layer-3: #eef2fc;
+  --dsw-alias-label-primary: #17213a;
+  --dsw-alias-label-secondary: #3b4964;
+  --dsw-alias-label-tertiary: #4b5871;
+  --dsw-alias-label-caption: #53617c;
+  --dsw-alias-brand-primary: #304bb6;
+  --dsw-alias-label-primary-inverted: #ffffff;
+  --dsw-alias-button-primary-hover: #253d99;
+  --dsw-alias-button-elevated-fill: rgb(255 255 255 / 84%);
+  --dsw-alias-button-floating-fill: #ffffff;
+  --dsw-alias-button-floating-hover: #edf1ff;
+  --dsw-alias-bg-module-platform: #edf1fc;
+  --dsw-alias-interactive-bg-active: rgb(75 109 217 / 14%);
+  --dsw-alias-interactive-bg-hover: rgb(75 109 217 / 8%);
+  --dsw-alias-interactive-bg-hover-solid: #eaf0ff;
+  --dsw-alias-border-l1: rgb(81 108 175 / 8%);
+  --dsw-alias-border-l2: rgb(81 108 175 / 12%);
+  --dsw-alias-border-l3: rgb(81 108 175 / 15%);
+  --dsw-alias-border-l4: rgb(81 108 175 / 19%);
+  --dsw-specific-sidebar-fill: rgb(239 244 255 / 68%);
+  --dsw-alias-settings-card-fill: rgb(255 255 255 / 74%);
+  --dsw-alias-settings-card-stroke: var(--dsw-alias-border-l3);
+  --dsw-alias-onboarding-card-fill: rgb(255 255 255 / 72%);
+  --dsw-specific-input-major: rgb(255 255 255 / 88%);
+  --dsw-specific-bubble: rgb(226 235 255 / 86%);
+  --dsw-alias-ambient-panel-paint:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--dsw-ambient-blue) 38%, transparent), transparent 60%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--dsw-ambient-violet) 32%, transparent), transparent 60%),
+    var(--dsw-alias-bg-layer-2);
+  background-color: var(--dsw-ambient-ground);
+  isolation: isolate;
+}
+
+body[data-ds-dark-theme] {
+  --dsw-ambient-ground: #0d1220;
+  --dsw-ambient-blue: rgb(88 120 255 / 22%);
+  --dsw-ambient-violet: rgb(176 123 245 / 16%);
+  --dsw-ambient-cyan: rgb(68 214 233 / 12%);
+  --dsw-alias-ambient-workspace-fill: rgb(13 18 32 / 48%);
+  --dsw-alias-bg-base: #11182a;
+  --dsw-alias-bg-layer-1: #161e33;
+  --dsw-alias-bg-layer-2: #1b243b;
+  --dsw-alias-bg-layer-3: #25314d;
+  --dsw-alias-label-primary: #f1f5ff;
+  --dsw-alias-label-secondary: #d2dcf0;
+  --dsw-alias-label-tertiary: #b4c2dc;
+  --dsw-alias-label-caption: #a2b3d3;
+  --dsw-alias-brand-primary: #b7c8ff;
+  --dsw-alias-label-primary-inverted: #0c1735;
+  --dsw-alias-button-primary-hover: #cfdaff;
+  --dsw-alias-button-elevated-fill: rgb(43 56 86 / 88%);
+  --dsw-alias-button-floating-fill: #25314d;
+  --dsw-alias-button-floating-hover: #304162;
+  --dsw-alias-bg-module-platform: #25314d;
+  --dsw-alias-interactive-bg-active: rgb(144 174 255 / 18%);
+  --dsw-alias-interactive-bg-hover: rgb(144 174 255 / 10%);
+  --dsw-alias-interactive-bg-hover-solid: #253454;
+  --dsw-alias-border-l1: rgb(163 184 245 / 8%);
+  --dsw-alias-border-l2: rgb(163 184 245 / 13%);
+  --dsw-alias-border-l3: rgb(163 184 245 / 17%);
+  --dsw-alias-border-l4: rgb(163 184 245 / 22%);
+  --dsw-specific-sidebar-fill: rgb(20 28 49 / 66%);
+  --dsw-alias-settings-card-fill: rgb(30 40 65 / 80%);
+  --dsw-alias-onboarding-card-fill: rgb(27 36 59 / 78%);
+  --dsw-specific-input-major: rgb(27 36 59 / 92%);
+  --dsw-specific-bubble: rgb(43 59 96 / 88%);
+}
+
+/* 两个合成层只动画化位移与透明度，不重排内容，也不遮挡点击或窗口拖拽。 */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: -12%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--dsw-ambient-opacity);
+  background-repeat: no-repeat;
+  transform-origin: center;
+  animation: freecode-ambient-drift var(--dsw-ambient-duration) ease-in-out infinite alternate;
+}
+
+body::before {
+  background-image:
+    radial-gradient(ellipse at 13% 18%, var(--dsw-ambient-blue), transparent 52%),
+    radial-gradient(ellipse at 86% 78%, var(--dsw-ambient-violet), transparent 55%),
+    radial-gradient(ellipse at 82% 12%, var(--dsw-ambient-cyan), transparent 44%);
+}
+
+body::after {
+  background-image:
+    radial-gradient(ellipse at 42% 92%, var(--dsw-ambient-cyan), transparent 48%),
+    radial-gradient(ellipse at 72% 48%, var(--dsw-ambient-violet), transparent 60%);
+  animation-name: freecode-ambient-counter;
+  animation-duration: var(--dsw-ambient-counter-duration);
+}
+
+@keyframes freecode-ambient-drift {
+  from { transform: translate3d(-2%, -1%, 0) rotate(-3deg) scale(1.04); }
+  to { transform: translate3d(3%, 2%, 0) rotate(3deg) scale(1.1); }
+}
+
+@keyframes freecode-ambient-counter {
+  from { transform: translate3d(2%, -2%, 0) scale(1.02); opacity: 0.52; }
+  to { transform: translate3d(-3%, 3%, 0) scale(1.1); opacity: 0.78; }
+}
+
+html[data-freecode-ambient-paused] body::before,
+html[data-freecode-ambient-paused] body::after {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after { animation: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body {
+    --dsw-alias-ambient-workspace-fill: #f7f9ff;
+    --dsw-specific-sidebar-fill: #edf2ff;
+    --dsw-alias-settings-card-fill: #ffffff;
+    --dsw-alias-onboarding-card-fill: #ffffff;
+    --dsw-specific-input-major: #ffffff;
+    --dsw-specific-bubble: #e2ebff;
+    --dsw-alias-ambient-panel-paint: var(--dsw-alias-bg-layer-2);
+  }
+
+  body[data-ds-dark-theme] {
+    --dsw-alias-ambient-workspace-fill: #11182a;
+    --dsw-specific-sidebar-fill: #161e33;
+    --dsw-alias-settings-card-fill: #1b243b;
+    --dsw-alias-onboarding-card-fill: #1b243b;
+    --dsw-specific-input-major: #1b243b;
+    --dsw-specific-bubble: #2b3b60;
+  }
+}
+
+@media (forced-colors: active) {
+  body::before,
+  body::after { display: none; }
+}

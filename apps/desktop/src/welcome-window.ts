@@ -3,9 +3,14 @@ import type { SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
+
+/** @returns 与原生主题一致的系统按钮配色，透明标题栏保留页面弥散背景。 */
+function welcomeTitleBarOverlay() {
+  return { color: '#00000000', symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115', height: 42 }
+}
 
 /**
  * Resolve the fixed-size welcome window's native material and controls.
@@ -33,7 +38,7 @@ export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopL
     } as const : {}),
     ...(platform === 'win32' ? {
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#00000000', symbolColor: '#0F1115', height: 42 },
+      titleBarOverlay: welcomeTitleBarOverlay(),
       backgroundMaterial: 'acrylic',
     } as const : {}),
     webPreferences: {
@@ -61,9 +66,15 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
   const window = new BrowserWindow(options)
   disposeActiveHandlers?.()
   let active = true
+  const windows = process.platform === 'win32'
+  const updatePalette = (): void => {
+    if (!active || window.isDestroyed()) return
+    window.setTitleBarOverlay(welcomeTitleBarOverlay())
+  }
   const disposeHandlers = (): void => {
     if (!active) return
     active = false
+    if (windows) nativeTheme.removeListener('updated', updatePalette)
     for (const channel of [
       WELCOME_IPC.analyticsEnabled, WELCOME_IPC.analytics, WELCOME_IPC.takeNotice, WELCOME_IPC.saveApiKey,
       WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink,
@@ -114,6 +125,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     return operations.copySignInLink(id as SignInAttemptId)
   })
   window.once('closed', disposeHandlers)
+  if (windows) nativeTheme.on('updated', updatePalette)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => { event.preventDefault() })
   try {

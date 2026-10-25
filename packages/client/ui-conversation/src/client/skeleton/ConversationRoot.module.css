@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  background: var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-ambient-canvas);
 }
 
 /* 76px with its rule: the height of the Sidebar's tab strip and header row

@@ -277,7 +277,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
       fill: getComputedStyle(element).backgroundColor, overlay: getComputedStyle(element).backgroundImage,
     }))
     expect(laterHover.fill).toBe('rgb(255, 255, 255)')
-    expect(laterHover.overlay).toContain('rgba(38, 49, 72, 0.06)')
+    expect(laterHover.overlay).toContain('rgba(75, 109, 217, 0.08)')
     if (screenshots !== undefined) await page.screenshot({ path: join(screenshots, 'credit-later-hover.png') })
     const warningsBefore = tripwire.warnings.length
     const [balanceResponse] = await Promise.all([

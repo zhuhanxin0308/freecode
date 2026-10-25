@@ -1,40 +1,24 @@
 @import url('./assets/window-material.css');
 
-/* Figma 2121:39336 / 2138:44626, Platform modes. Native material supplies the blur. */
-body {
-  color-scheme: light dark;
-  --dsw-alias-label-primary: #0f1115;
-  --dsw-alias-label-secondary: #61666b;
-  --dsw-alias-label-tertiary: #81858c;
-  --dsw-alias-label-primary-inverted: #fff;
-  --dsw-alias-brand-primary: var(--dsw-alias-label-primary);
-  --dsw-alias-button-primary-hover: #43454a;
-  --dsw-alias-button-elevated-fill: #fff;
-  --dsw-alias-button-floating-hover: #f1f3f5;
-  --dsw-alias-border-l2: #0000001a;
-  --dsw-alias-border-l4: #00000029;
-  --dsw-alias-label-caption: #adb2b8;
-  --welcome-tint: var(--dsw-desktop-window-tint);
+/* 原生欢迎页沿用窗口材质的明暗配色和现有布局。 */
+body,
+body[data-ds-dark-theme] {
+  --dsw-alias-label-primary: var(--dsw-ambient-native-ink);
+  --dsw-alias-label-secondary: var(--dsw-ambient-native-muted);
+  --dsw-alias-label-tertiary: var(--dsw-ambient-native-muted);
+  --dsw-alias-label-primary-inverted: var(--dsw-ambient-native-on-action);
+  --dsw-alias-brand-primary: var(--dsw-ambient-native-action);
+  --dsw-alias-button-primary-hover: var(--dsw-ambient-native-action-hover);
+  --dsw-alias-button-elevated-fill: var(--dsw-ambient-native-surface);
+  --dsw-alias-button-floating-hover: var(--dsw-ambient-native-hover);
+  --dsw-alias-border-l2: var(--dsw-ambient-native-border);
+  --dsw-alias-border-l4: var(--dsw-ambient-native-border);
+  --dsw-alias-label-caption: var(--dsw-ambient-native-muted);
   --ds-transition-duration: 0.2s;
   --ds-transition-duration-slow: 0.3s;
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --dsw-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --dsw-font-family-brand: 'Montserrat', var(--dsw-font-family);
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    --dsw-alias-label-primary: #f9fafb;
-    --dsw-alias-label-secondary: #cfd3d6;
-    --dsw-alias-label-tertiary: #adb2b8;
-    --dsw-alias-label-primary-inverted: #353638;
-    --dsw-alias-button-primary-hover: #ebeef2;
-    --dsw-alias-button-elevated-fill: #43454a;
-    --dsw-alias-button-floating-hover: #353638;
-    --dsw-alias-border-l2: #ffffff1f;
-    --dsw-alias-border-l4: #ffffff33;
-    --dsw-alias-label-caption: #81858c;
-  }
 }
 
 * {
@@ -51,7 +35,6 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: transparent;
   font-family: var(--dsw-font-family);
   font-weight: 400;
 }
@@ -63,7 +46,7 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 6px 16px;
-  background: var(--welcome-tint);
+  background: transparent;
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-family-brand);
   font-weight: 300;
@@ -188,6 +171,8 @@ body {
   border-color: var(--dsw-alias-border-l2);
   background: var(--dsw-alias-button-elevated-fill);
   color: var(--dsw-alias-label-primary);
+  backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px rgb(255 255 255 / 12%);
 }
 
 .actions .back {
@@ -277,7 +262,7 @@ body {
   border: 1px solid var(--dsw-alias-border-l4);
   border-radius: 12px;
   outline: none;
-  background: transparent;
+  background: var(--dsw-ambient-native-field);
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
   font-weight: inherit;
@@ -288,6 +273,7 @@ body {
 
 .key-field input:focus {
   border-color: var(--dsw-alias-brand-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
 }
 
 .key-field input::placeholder {

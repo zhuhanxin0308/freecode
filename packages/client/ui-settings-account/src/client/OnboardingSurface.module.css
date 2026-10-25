@@ -4,12 +4,8 @@
   z-index: 900;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-ambient-workspace-fill);
   user-select: none;
-}
-
-:global(html[data-platform='darwin']) .onboardingOverlay {
-  background: transparent;
 }
 
 .onboardingOverlay[data-exiting] {
