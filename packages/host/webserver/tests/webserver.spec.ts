@@ -11,12 +11,14 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { once } from 'node:events'
+import { request as httpRequest } from 'node:http'
 import { Agent, request as httpsRequest } from 'node:https'
 import { connect, createServer as createTcpServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Duplex } from 'node:stream'
 import { pathToFileURL } from 'node:url'
+import { createGunzip } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, FiberState } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
@@ -150,14 +152,35 @@ function boundPort(port: number | undefined): number {
   return port
 }
 
-/** GET (by default) one path against the running server; returns status plus a body prefix. */
+/** 直接请求已绑定的 HTTP 监听器；保留响应头，并返回解压后正文的前 80 个字符。 */
 async function request(
   port: number | undefined,
   path: string,
-  init?: RequestInit,
+  init: { method?: string; headers?: HeadersInit; body?: string | Uint8Array } = {},
 ): Promise<{ status: number; body: string; headers: Headers }> {
-  const response = await fetch(`http://127.0.0.1:${String(boundPort(port))}${path}`, init)
-  return { status: response.status, body: (await response.text()).slice(0, 80), headers: response.headers }
+  return new Promise((resolve, reject) => {
+    const outgoing = httpRequest({
+      host: '127.0.0.1', port: boundPort(port), path, method: init.method,
+      headers: Object.fromEntries(new Headers(init.headers)), agent: false,
+    }, (response) => {
+      const headers = new Headers()
+      for (let index = 0; index < response.rawHeaders.length; index += 2) {
+        headers.append(response.rawHeaders[index]!, response.rawHeaders[index + 1]!)
+      }
+      const decoded = response.headers['content-encoding'] === 'gzip' ? response.pipe(createGunzip()) : response
+      let body = ''
+      decoded.setEncoding('utf8')
+      decoded.on('data', (chunk: string) => { body += chunk })
+      decoded.once('end', () => { resolve({ status: response.statusCode ?? 0, body: body.slice(0, 80), headers }) })
+      decoded.once('error', reject)
+      response.once('error', (error) => {
+        if (decoded !== response) decoded.destroy(error)
+        reject(error)
+      })
+    })
+    outgoing.once('error', reject)
+    outgoing.end(init.body)
+  })
 }
 
 /** Open one raw upgrade request and return after the handler writes its response. */
@@ -226,6 +249,37 @@ function tlsUpgrade(port: number | undefined, path: string, ca: string): Promise
 }
 
 describe('real Loader composition', () => {
+  it('transports HTTP requests even when Fetch rejects the allocated listener port', async () => {
+    const loaded = await loadComposition()
+    const port = boundPort(loaded.webServer.port)
+    const path = '/transport?mode=echo'
+    const body = '真实请求正文：'.repeat(20)
+    let received: { method: string | undefined; path: string | undefined; header: string | string[] | undefined; body: string } | undefined
+    loaded.webServer.register({ kind: 'exact', path: '/transport', handler: async (req, res) => {
+      let text = ''
+      req.setEncoding('utf8')
+      req.on('data', (chunk: string) => { text += chunk })
+      await once(req, 'end')
+      received = { method: req.method, path: req.url, header: req.headers['x-fixture'], body: text }
+      res.writeHead(201, { 'content-type': 'text/plain; charset=utf-8', 'x-fixture-result': 'received' })
+      res.end(text)
+    } })
+    const url = `http://127.0.0.1:${String(port)}${path}`
+    const originalFetch = globalThis.fetch
+    // 仅让 Fetch 拒绝本用例的随机端口，真实 HTTP 监听仍可连接，不争抢固定端口。
+    const browserFetch = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => input === url
+      ? Promise.reject(new TypeError('fetch failed', { cause: new Error('bad port') }))
+      : originalFetch(input, init))
+    try {
+      const response = await request(port, path, { method: 'POST', body,
+        headers: new Headers({ 'x-fixture': 'transport', 'content-type': 'text/plain; charset=utf-8' }) })
+      expect(response).toMatchObject({ status: 201, body: body.slice(0, 80) })
+      expect(response.headers.get('x-fixture-result')).toBe('received')
+      expect(received).toEqual({ method: 'POST', path, header: 'transport', body })
+      expect(browserFetch).not.toHaveBeenCalled()
+    } finally { browserFetch.mockRestore() }
+  })
+
   it('accepts one concrete IP literal, keeping an IPv6 zone for listen', () => {
     for (const host of ['127.0.0.1', '10.1.2.3', '0.1.2.3', '::1', 'fd00::1', '::ffff:10.1.2.3', '::ffff:0.1.2.3', '0:0:0:0:0:0:0:1', 'fe80::1%lo', '::0.0.0.1', '::0.0.0.1%lo', '::127.0.0.1']) {
       expect(HttpServer.Config({ host, port: 0 }).host).toBe(host)
