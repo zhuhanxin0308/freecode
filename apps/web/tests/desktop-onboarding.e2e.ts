@@ -1,4 +1,4 @@
-// Shipped Loader composition, real account/settings APIs, and an isolated external Platform fixture.
+// 使用实际发布的 Loader、账号与设置 API；仅外部 free code 服务由隔离的 HTTP 夹具提供。
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -19,6 +19,12 @@ const MODE = webSnapshotMode()
 const EXPECTED = fileURLToPath(new URL('./expected/desktop-onboarding', import.meta.url))
 const NS = 'ui-settings-account'
 const INITIAL = { version: 1, step: 'welcome', purpose: null, process: null, completion: null, usage: 'compact', developerTools: false }
+const ACCOUNT_KEY = credentialKey('freecode-account', 'default')
+const TOKEN = 'o'.repeat(43)
+const USER = { sub: 'onboarding-fixture-user', username: 'onboarding', nickname: 'Onboarding Fixture', avatar: '' }
+const SESSION_DURATION_MS = 3_600_000
+const UNITS_PER_POINT = '1000000'
+const CLIENT = { version: 'onboarding-fixture', locale: 'zh', timezoneOffsetSeconds: 0 }
 
 describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () => {
   let root: string
@@ -30,65 +36,65 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
   let tripwire: ReturnType<typeof watchConsole>
   let balanceFailure = false
   let balanceReads = 0
-  let walletBalance = '0E-16'
-  let bonusBalance = '0'
-  let bonusOffered = false
-  let bonusReads = 0
-  let bonusAcks = 0
+  let availableUnits = '0'
+  let heldUnits = '0'
+  let legacyRequests: string[] = []
+  let accountPageRequests: { url: string; authorization: string | undefined }[] = []
   let screenshots: string | undefined
 
   beforeEach(async () => {
-    bonusOffered = false
-    bonusReads = 0
-    bonusAcks = 0
     balanceFailure = false
     balanceReads = 0
-    walletBalance = '0E-16'
-    bonusBalance = '0'
+    availableUnits = '0'
+    heldUnits = '0'
+    legacyRequests = []
+    accountPageRequests = []
     screenshots = undefined
     root = await mkdtemp(join(tmpdir(), 'dsh-desktop-onboarding-'))
     server = createServer((request, response) => {
-      if (request.url === '/api/v0/users/get_unnotified_bonuses') {
-        bonusReads++
-        response.setHeader('content-type', 'application/json')
-        response.end(JSON.stringify({ code: 0, data: { biz_code: 0, biz_data: bonusOffered ? [{
-          order_id: '88888888-8888-4888-8888-888888888888', campaign: 'dsh_login_bonus',
-          amount: '5.00', currency: 'CNY', granted_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 86_400_000).toISOString(), msg: '已赠送您 5.00 元 DSH 体验赠金。',
-        }] : [] } }))
-        return
-      }
-      if (request.url === '/api/v0/users/ack_bonus_notified') {
-        bonusAcks++
-        bonusOffered = false
-        response.setHeader('content-type', 'application/json')
-        response.end(JSON.stringify({ code: 0, data: { biz_code: 0, biz_data: null } }))
-        return
-      }
-      if (request.url !== '/auth-api/v0/users/current' && request.url !== '/api/v0/users/get_user_summary') {
+      if (request.url?.startsWith('/api/v0/') || request.url?.startsWith('/auth-api/')) {
+        legacyRequests.push(request.url)
         response.writeHead(404).end()
         return
       }
-      const balance = request.url === '/api/v0/users/get_user_summary'
-      if (balance) balanceReads++
-      const value = balance
-        ? { bonus_wallets: [{ currency: 'CNY', balance: bonusBalance }], normal_wallets: [{ currency: 'CNY', balance: walletBalance }] }
-        : { id: 'onboarding-fixture-user', email: 'f***@example.invalid', id_profile: { name: 'Onboarding Fixture' } }
-      response.setHeader('content-type', 'application/json')
-      response.end(JSON.stringify({ code: 0, data: { biz_code: balance && balanceFailure ? 17 : 0, biz_data: value } }))
+      if (request.url?.startsWith('/account')) {
+        accountPageRequests.push({ url: request.url, authorization: request.headers.authorization })
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+          .end('<title>账号服务测试页面</title><p>外部账号服务夹具</p>')
+        return
+      }
+      if (request.headers.authorization !== `Bearer ${TOKEN}`) { response.writeHead(401).end(); return }
+      // 与线上解析器一致：无请求体的 GET 不携带 JSON Content-Type。
+      if (request.method !== 'GET' || request.headers['content-type'] !== undefined) { response.writeHead(400).end(); return }
+      const reply = (value: unknown) => {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(value))
+      }
+      if (request.url === '/v1/me') { reply({ user: USER, is_admin: false }); return }
+      if (request.url === '/v1/models') { reply({ data: [] }); return }
+      if (request.url === '/v1/points') {
+        balanceReads++
+        if (balanceFailure) { response.writeHead(503).end(); return }
+        reply({ balance: { available_units: availableUnits, held_units: heldUnits }, units_per_point: UNITS_PER_POINT })
+        return
+      }
+      response.writeHead(404).end()
     })
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
     const address = server.address()
     if (address === null || typeof address === 'string') throw new Error('fixture server address unavailable')
     origin = `http://127.0.0.1:${address.port}`
     const overlay = join(root, 'account.patch.yml')
-    await writeFile(overlay, `- id: deepseek-account\n  config:\n    platformOrigin: ${origin}\n    allowLoopbackHttp: true\n`)
+    await writeFile(overlay, `- id: deepseek-account\n  config:\n    origin: ${origin}\n    allowLoopbackHttp: true\n- id: llm-pi-ai\n  config:\n    freecode:\n      origin: ${origin}\n      allowLoopbackHttp: true\n`)
     scaffold = await launchWebScaffold({ deepSeekMissingCredential: true, extraOverlayPath: overlay })
-    await scaffold.ctx.credentials.modifyRecord(credentialKey('deepseek-account-platform', 'default'), async () => ({
-      kind: 'grant', payload: { version: 1, issuer: origin, token: 'onboarding-fixture-token' },
-    }))
+    await storeAccount()
     browser = await chromium.launch()
   })
+
+  async function storeAccount(): Promise<void> {
+    await scaffold.ctx.credentials.modifyRecord(ACCOUNT_KEY, async () => ({
+      kind: 'grant', payload: { version: 1, issuer: origin, token: TOKEN, expiresAt: Date.now() + SESSION_DURATION_MS, user: USER },
+    }))
+  }
 
   afterEach(async () => {
     try { await browser?.close() } finally {
@@ -121,7 +127,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     return opened
   }
 
-  async function snapshot(name: string): Promise<void> {
+  async function snapshot(name: string, expectedName = name): Promise<void> {
     await expect.poll(() => page.locator('[data-desktop-onboarding]').getAttribute('aria-busy')).toBe('false')
     const hasIllustration = name.startsWith('welcome') || name.startsWith('credit')
     if (hasIllustration) {
@@ -135,7 +141,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     }
     const aria = await captureStableAria(page, '[data-desktop-onboarding]', scaffold.workspaceCwd)
     await mkdir(EXPECTED, { recursive: true })
-    await compareOrRefreshGolden(join(EXPECTED, `${name}.expected.md`), aria, MODE)
+    await compareOrRefreshGolden(join(EXPECTED, `${expectedName}.expected.md`), aria, MODE)
     if (MODE === 'refresh' && screenshots === undefined) {
       const artifacts = join(REPO_ROOT, '.artifacts')
       await mkdir(artifacts, { recursive: true })
@@ -226,6 +232,11 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     await page.setViewportSize({ width: 1280, height: 840 })
   }
 
+  async function theme(preference: 'light' | 'dark'): Promise<void> {
+    await scaffold.ctx.settings.mutate('ui-theme', [{ op: 'set', path: ['preference'], value: preference }])
+    await expect.poll(() => page.locator('body').getAttribute('data-ds-dark-theme')).toBe(preference === 'dark' ? '' : null)
+  }
+
   it('keeps Web unchanged, resumes App progress, and returns to credit even when balance refresh fails', async () => {
     const web = await browser.newPage({ viewport: { width: 1280, height: 840 }, locale: ZH_BROWSER_LOCALE })
     try {
@@ -243,6 +254,9 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     expect(await page.getByRole('button', { name: '跳过', exact: true }).count()).toBe(0)
     expect(await page.locator('[data-desktop-onboarding]').count()).toBe(1)
     await snapshot('welcome')
+    await theme('dark')
+    await snapshot('welcome-zh-dark', 'welcome')
+    await theme('light')
     for (const platform of ['darwin', 'win32']) {
       await page.evaluate((value) => { document.documentElement.dataset.platform = value }, platform)
       expect(await page.locator('[data-desktop-onboarding]').evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region'))).toBe('none')
@@ -250,10 +264,13 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     }
     await page.evaluate(() => { delete document.documentElement.dataset.platform })
     await page.getByRole('button', { name: '开始设置', exact: true }).click()
-    await page.getByRole('heading', { name: '准备可用额度', exact: true }).waitFor()
+    await page.getByRole('heading', { name: '了解平台积分', exact: true }).waitFor()
     expect(await page.getByRole('button', { name: '下一步', exact: true })
       .evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(255, 255, 255)')
     await snapshot('credit')
+    await theme('dark')
+    await snapshot('credit-zh-dark', 'credit')
+    await theme('light')
     const laterButton = page.getByRole('button', { name: '下一步', exact: true })
     await laterButton.hover()
     const laterHover = await laterButton.evaluate(element => ({
@@ -269,19 +286,35 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     ])
     await balanceResponse.finished()
     acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
-    await page.getByRole('heading', { name: '准备可用额度', exact: true }).waitFor()
+    await page.getByRole('heading', { name: '了解平台积分', exact: true }).waitFor()
     expect(await page.getByRole('button', { name: '开始设置', exact: true }).count()).toBe(0)
     await page.getByRole('button', { name: '下一步', exact: true }).click()
-    await page.getByRole('heading', { name: '暂时跳过充值？', exact: true }).waitFor()
+    await page.getByRole('heading', { name: '稍后准备积分？', exact: true }).waitFor()
     expect(await page.locator('[data-desktop-onboarding]').evaluate(element => getComputedStyle(element).filter)).toBe('none')
     expect(await page.getByRole('dialog').evaluate(element => getComputedStyle(element.previousElementSibling!).backdropFilter)).toBe('none')
-    await page.getByRole('button', { name: '前往充值', exact: true }).click()
-    await page.getByRole('button', { name: '返回 DeepSeek Harness', exact: true }).waitFor()
+    const [portal] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByRole('dialog').getByRole('button', { name: '打开账号中心', exact: true }).click(),
+    ])
+    await portal.waitForLoadState('load')
+    expect(portal.url()).toBe(`${origin}/account`)
+    expect(await portal.evaluate(() => window.opener === null)).toBe(true)
+    expect(accountPageRequests).toEqual([{ url: '/account', authorization: undefined }])
+    expect(await page.getByRole('dialog').count()).toBe(0)
     expect((scaffold.ctx.settings.describe().find(row => row.ns === NS)?.value as { step: string }).step).toBe('credit')
     balanceFailure = true
     const readsBefore = balanceReads
-    await page.getByRole('button', { name: '返回 DeepSeek Harness', exact: true }).click()
-    await page.getByRole('heading', { name: '准备可用额度', exact: true }).waitFor()
+    const [failedBalance] = await Promise.all([
+      page.waitForResponse('**/api/account/getBalance'),
+      (async () => {
+        await portal.close()
+        // 无头浏览器没有操作系统焦点切换；显式发送桌面返回时的 focus 事件。
+        await page.evaluate(() => { window.dispatchEvent(new Event('focus')) })
+      })(),
+    ])
+    await failedBalance.finished()
+    expect(await failedBalance.json()).toMatchObject({ result: { ok: true, value: { status: 'failed' } } })
+    await page.getByRole('heading', { name: '了解平台积分', exact: true }).waitFor()
     await expect.poll(() => balanceReads).toBeGreaterThan(readsBefore)
     await expect.poll(() => page.getByRole('button', { name: '下一步', exact: true }).isEnabled()).toBe(true)
     await page.getByRole('button', { name: '下一步', exact: true }).click()
@@ -394,17 +427,22 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     await page.getByText('选择一个工作区开始', { exact: true }).waitFor()
     expect(await page.locator('[data-desktop-onboarding]').count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
+    expect(legacyRequests).toEqual([])
     await page.close()
   })
 
   it('keeps funded credit actions stable and rechecks on reload in English dark mode', async () => {
-    bonusBalance = '12.50'
+    availableUnits = '12500000'
+    heldUnits = '2000000'
     await scaffold.ctx.settings.mutate('ui-theme', [{ op: 'set', path: ['preference'], value: 'dark' }])
     page = await desktopPage('en-US')
     const response = page.waitForResponse('**/api/account/getBalance')
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await (await response).finished()
     await snapshot('welcome-en-dark')
+    await theme('light')
+    await snapshot('welcome-en-light', 'welcome-en-dark')
+    await theme('dark')
     await page.getByRole('button', { name: 'Get started', exact: true }).click()
     await snapshot('credit-funded-en-dark')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
@@ -415,15 +453,18 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     await page.getByRole('button', { name: 'Back', exact: true }).click()
     await page.getByRole('button', { name: 'Get started', exact: true }).waitFor()
     expect(scaffold.ctx.settings.describe().find(row => row.ns === NS)?.value).not.toHaveProperty('creditFunded')
-    bonusBalance = '0'
+    availableUnits = '0'
     const recheck = page.waitForResponse('**/api/account/getBalance')
     await page.reload({ waitUntil: 'load' })
     await (await recheck).finished()
     await page.getByRole('button', { name: 'Get started', exact: true }).click()
-    await page.getByRole('heading', { name: 'Add credits', exact: true }).waitFor()
+    await page.getByRole('heading', { name: 'Platform points', exact: true }).waitFor()
     expect(await page.getByRole('button', { name: 'Next', exact: true })
       .evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(72, 73, 76)')
     await snapshot('credit-en-dark')
+    await theme('light')
+    await snapshot('credit-en-light', 'credit-en-dark')
+    await theme('dark')
     expect(await page.locator('[class*="backIcon"]').evaluate(element => getComputedStyle(element).maskImage)).toContain('data:image/svg+xml')
     await page.getByRole('button', { name: 'Next', exact: true }).click()
     await page.getByRole('button', { name: 'Got it', exact: true }).click()
@@ -434,45 +475,50 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     await page.close()
   })
 
-  it('leaves a bonus unacknowledged on onboarding exit and presents it only in the workspace', async () => {
-    bonusOffered = true
-    walletBalance = '5.00'
+  it('keeps a new free code account at zero points across onboarding reopen and workspace entry without legacy bonuses', async () => {
     const observations: string[] = []
     for (const reopen of [false, true]) {
-      const readsBefore = bonusReads
+      const readsBefore = balanceReads
       page = await desktopPage()
-      onTestFailed(() => saveFailureShot(page, 'desktop-onboarding-bonus'))
+      onTestFailed(() => saveFailureShot(page, 'desktop-onboarding-zero-points'))
       await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
       if (!reopen) await page.getByRole('button', { name: '开始设置', exact: true }).click()
-      await expect.poll(() => bonusReads).toBeGreaterThan(readsBefore)
-      await page.getByRole('heading', { name: '准备可用额度', exact: true }).waitFor()
-      expect(await page.getByText('已赠送您 5.00 元 DSH 体验赠金。', { exact: true }).count()).toBe(0)
-      expect(bonusAcks).toBe(0)
-      observations.push(`${reopen ? 'reopened' : 'initial'}.onboarding notice=false acks=${bonusAcks}`)
+      await expect.poll(() => balanceReads).toBeGreaterThan(readsBefore)
+      await page.getByRole('heading', { name: '了解平台积分', exact: true }).waitFor()
+      const balance = await scaffold.ctx.deepseekAccount.getBalance(CLIENT)
+      expect(balance).toEqual({ status: 'ready', value: [], bonusWallets: [], points: {
+        availableUnits: '0', heldUnits: '0', unitsPerPoint: UNITS_PER_POINT,
+      } })
+      expect(await page.getByText(/体验赠金|已赠送您/).count()).toBe(0)
+      expect(legacyRequests).toEqual([])
+      observations.push(`${reopen ? 'reopened' : 'initial'}.onboarding points=0 bonusWallets=[] legacyRequests=0`)
       if (!reopen) {
         await page.close()
-        expect(bonusAcks).toBe(0)
-        observations.push(`closed.onboarding acks=${bonusAcks}`)
+        expect(legacyRequests).toEqual([])
+        observations.push('closed.onboarding legacyRequests=0')
       }
     }
     await page.getByRole('button', { name: '下一步', exact: true }).click()
+    await page.getByRole('button', { name: '我知道了', exact: true }).click()
     await page.getByRole('button', { name: '跳过', exact: true }).click()
     await page.getByRole('dialog').getByRole('button', { name: '进入应用', exact: true }).click()
     await page.locator('[data-desktop-onboarding]').waitFor({ state: 'detached' })
-    const notice = page.getByText('已赠送您 5.00 元 DSH 体验赠金。', { exact: true })
-    await notice.waitFor({ state: 'visible' })
-    await expect.poll(() => bonusAcks).toBe(1)
-    observations.push(`workspace.notice=${await notice.innerText()} acks=${bonusAcks}`)
-    await compareOrRefreshGolden(join(EXPECTED, 'bonus-after-onboarding.expected.md'), observations.join('\n'), MODE)
+    await page.getByText('选择一个工作区开始', { exact: true }).waitFor()
+    expect(await scaffold.ctx.deepseekAccount.getUnnotifiedBonuses(CLIENT)).toBeNull()
+    expect(await page.getByText(/体验赠金|已赠送您/).count()).toBe(0)
+    expect(legacyRequests).toEqual([])
+    expect(availableUnits).toBe('0')
+    observations.push('workspace.points=0 bonusNotice=false legacyRequests=0')
+    await compareOrRefreshGolden(join(EXPECTED, 'zero-points-after-onboarding.expected.md'), observations.join('\n'), MODE)
     await page.close()
   })
 
   it('applies API-key defaults without opening App onboarding or repeating after account login', async () => {
-    await scaffold.ctx.credentials.deleteRecord(credentialKey('deepseek-account-platform', 'default'))
+    await scaffold.ctx.credentials.deleteRecord(ACCOUNT_KEY)
     await scaffold.ctx.credentials.set(credentialRef('DEEPSEEK_API_KEY'), 'fixture-api-key')
     await scaffold.ctx.settings.mutate(NS, Object.entries(INITIAL).map(([field, value]) => ({ op: 'set', path: [field], value })))
     page = await desktopPage()
-    // Completion follows client activation, credential metadata, and three ordered Host writes.
+    // 完成状态在客户端激活、凭据查询和三个有序主机写入之后才生效。
     const completed = page.waitForResponse((response) => {
       if (!response.url().endsWith('/api/settings/mutate')) return false
       const request = response.request().postDataJSON() as { payload: { args: { ns: string } } }
@@ -486,9 +532,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     expect(scaffold.ctx.settings.describe().find(row => row.ns === NS)?.value).toMatchObject({ completion: 'api-key', process: 'standard', usage: 'detailed', developerTools: true })
     expect(scaffold.ctx.settings.describe().find(row => row.ns === 'ui-chat')?.value).toMatchObject({ transcriptView: 'standard', performanceUsage: 'detailed' })
     expect(scaffold.ctx.settings.describe().find(row => row.ns === 'ui-settings')?.value).toMatchObject({ enabled: true })
-    await scaffold.ctx.credentials.modifyRecord(credentialKey('deepseek-account-platform', 'default'), async () => ({
-      kind: 'grant', payload: { version: 1, issuer: origin, token: 'onboarding-fixture-token' },
-    }))
+    await storeAccount()
     await page.reload({ waitUntil: 'load' })
     await page.getByText('选择一个工作区开始', { exact: true }).waitFor()
     expect(await page.locator('[data-desktop-onboarding]').count()).toBe(0)

@@ -1,7 +1,7 @@
-- region "Add credits":
-  - heading "Add credits" [level=1]
-  - paragraph: DeepSeek Harness charges credits based on the tokens used by models and tools. Add credits in advance to keep your tasks running without interruption. Your balance is only used while the agent is working on a task.
-  - button "Add credits"
+- region "Platform points":
+  - heading "Platform points" [level=1]
+  - paragraph: Platform models charge points for input, output, and cached tokens. Points are reserved before a request and settled against actual usage. View points in your account portal. Your own API keys and local browsing do not require platform points.
+  - button "Open account portal"
   - button "Next"
   - button "Back"
   - button "Skip"

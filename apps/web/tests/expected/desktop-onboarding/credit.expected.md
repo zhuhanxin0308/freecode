@@ -1,7 +1,7 @@
-- region "准备可用额度":
-  - heading "准备可用额度" [level=1]
-  - paragraph: DeepSeek Harness 执行任务时，会根据模型与工具使用的 token 量扣除额度。请提前添加额度，避免任务在执行过程中被迫中断。你的余额只会在 Agent 实际执行任务时消耗。
-  - button "去充值"
+- region "了解平台积分":
+  - heading "了解平台积分" [level=1]
+  - paragraph: 平台模型按输入、输出及缓存 Token 用量扣除积分。请求前会预留积分，完成后按实际用量结算。账号中心可查看积分；使用自己的 API Key 或作为游客浏览本地项目无需平台积分。
+  - button "打开账号中心"
   - button "下一步"
   - button "上一步"
   - button "跳过"
