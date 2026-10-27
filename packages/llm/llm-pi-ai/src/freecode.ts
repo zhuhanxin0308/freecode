@@ -8,8 +8,20 @@ import { authContextFrom, credentialStoreFrom } from './auth.ts'
 import { resolveProfiles, type Config } from './config.ts'
 
 const PROVIDER = 'deepseek-account'
+// 平台窗口和思考档位由服务端统一提供；本地设置不能扩大平台能力。
+const PLATFORM_CONTEXT_WINDOW = 256 * 1024
+const PLATFORM_EFFORTS = ['low', 'medium', 'high'] as const
 type Deployment = NonNullable<Config['freecode']>
-interface Model { id: string; name: string; protocol: 'chat_completions' | 'responses'; max_input_tokens: number; max_output_tokens: number }
+interface Model {
+  id: string
+  name: string
+  protocol: 'chat_completions' | 'responses'
+  max_input_tokens: number
+  max_output_tokens: number
+  context_window: number
+  reasoning_efforts: typeof PLATFORM_EFFORTS
+  default_reasoning_effort: 'medium'
+}
 interface Catalog { token: string; at: number; models: readonly Model[] }
 
 function catalogModels(value: unknown): readonly Model[] {
@@ -20,9 +32,17 @@ function catalogModels(value: unknown): readonly Model[] {
       || !('name' in entry) || typeof entry.name !== 'string' || !('protocol' in entry) || !['chat_completions', 'responses'].includes(String(entry.protocol))
       || !('max_input_tokens' in entry) || typeof entry.max_input_tokens !== 'number' || !Number.isSafeInteger(entry.max_input_tokens) || entry.max_input_tokens <= 0
       || !('max_output_tokens' in entry) || typeof entry.max_output_tokens !== 'number' || !Number.isSafeInteger(entry.max_output_tokens) || entry.max_output_tokens <= 0
+      || !('context_window' in entry) || entry.context_window !== PLATFORM_CONTEXT_WINDOW
+      || entry.max_input_tokens + entry.max_output_tokens !== PLATFORM_CONTEXT_WINDOW
+      || !('reasoning_efforts' in entry) || !Array.isArray(entry.reasoning_efforts)
+      || entry.reasoning_efforts.length !== PLATFORM_EFFORTS.length
+      || !entry.reasoning_efforts.every((effort: unknown, index) => effort === PLATFORM_EFFORTS[index])
+      || !('default_reasoning_effort' in entry) || entry.default_reasoning_effort !== 'medium'
       || ids.has(entry.id)) throw new LlmError('平台模型目录格式错误', 'ACCOUNT_CATALOG_INVALID')
     ids.add(entry.id)
-    return { id: entry.id, name: entry.name, protocol: entry.protocol as Model['protocol'], max_input_tokens: entry.max_input_tokens, max_output_tokens: entry.max_output_tokens }
+    return { id: entry.id, name: entry.name, protocol: entry.protocol as Model['protocol'], max_input_tokens: entry.max_input_tokens,
+      max_output_tokens: entry.max_output_tokens, context_window: entry.context_window,
+      reasoning_efforts: PLATFORM_EFFORTS, default_reasoning_effort: entry.default_reasoning_effort }
   })
 }
 
@@ -109,9 +129,12 @@ export class FreeCodeAdapter extends LlmAdapter {
     const profiles = resolveProfiles({ [PROVIDER]: { displayName: 'free code', baseURL: `${this.origin}/v1`,
       api: model.protocol === 'responses' ? 'openai-responses' : 'openai-completions', transport: 'sse',
       headers: { 'Idempotency-Key': randomUUID() },
+      reasoning: model.default_reasoning_effort,
       models: [{ id: model.id, name: model.name,
-        contextWindow: model.max_input_tokens + model.max_output_tokens, maxTokens: model.max_output_tokens }],
-      ...(model.protocol === 'chat_completions' ? { compat: { supportsUsageInStreaming: true, maxTokensField: 'max_tokens' as const } } : {}),
+        contextWindow: model.context_window, maxTokens: model.max_output_tokens,
+        reasoningEfforts: Object.fromEntries(model.reasoning_efforts.map(effort => [effort, effort])) }],
+      ...(model.protocol === 'chat_completions' ? { compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true,
+        thinkingFormat: 'openai' as const, maxTokensField: 'max_tokens' as const } } : {}),
       retryPolicy: { mode: 'normal', maxRetries: 0 },
     } })
     return new PiAiAdapter({ profiles: () => profiles,

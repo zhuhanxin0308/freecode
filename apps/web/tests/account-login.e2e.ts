@@ -9,18 +9,23 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Browser } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
 import { compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
-import { saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, saveFailureShot } from './support.ts'
 
 const OVERLAY_TEMPLATE = fileURLToPath(new URL('./fixtures/account-login/cordis.patch.yml', import.meta.url))
 const MODE = webSnapshotMode()
 const TOKEN = 'f'.repeat(43)
 const CODE = 'web-login-code'
 const AVATAR_EXPECTED = fileURLToPath(new URL('./expected/account-login/avatar-retry.expected.md', import.meta.url))
+const MODELS_EXPECTED = fileURLToPath(new URL('./expected/account-login/platform-models.expected.md', import.meta.url))
+const PLATFORM_MODEL = { id: 'platform-code', name: 'Platform Code', protocol: 'chat_completions',
+  context_window: 262144, max_input_tokens: 229376, max_output_tokens: 32768,
+  reasoning_efforts: ['low', 'medium', 'high'], default_reasoning_effort: 'medium' }
 
 /** 本地 free code 协议服务：授权跳转、换码和登录后的资料读取。 */
 async function mockPlatform() {
   const inits: Record<string, unknown>[] = []
   const pages: string[] = []
+  const modelRequests: Record<string, unknown>[] = []
   let state: string | undefined
   let redirectUri: string | undefined
   let avatarRequests = 0
@@ -90,7 +95,22 @@ async function mockPlatform() {
       reply({ balance: { available_units: '1234567', held_units: '2000000' }, units_per_point: '1000000' })
       return
     }
-    if (url.pathname === '/v1/models') { reply({ data: [] }); return }
+    if (url.pathname === '/v1/models') { reply({ data: [PLATFORM_MODEL] }); return }
+    if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
+      let body = ''
+      req.setEncoding('utf8')
+      req.on('data', (chunk: string) => { body += chunk })
+      req.on('end', () => {
+        modelRequests.push(JSON.parse(body) as Record<string, unknown>)
+        res.writeHead(200, { 'content-type': 'text/event-stream' })
+        for (const event of [
+          { choices: [{ index: 0, delta: { role: 'assistant', content: 'PLATFORM_MODEL_OK' }, finish_reason: null }] },
+          { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 } },
+        ]) res.write(`data: ${JSON.stringify(event)}\n\n`)
+        res.end('data: [DONE]\n\n')
+      })
+      return
+    }
     res.writeHead(404).end()
   })
   // 本机动态端口范围包含浏览器禁用端口，直接原子绑定 IANA 高端口区间。
@@ -114,7 +134,7 @@ async function mockPlatform() {
   if (address === null || typeof address === 'string') throw new Error('account login: missing mock listener')
   const origin = `http://127.0.0.1:${String(address.port)}`
   return {
-    origin, inits, pages, avatarRequests: () => avatarRequests,
+    origin, inits, pages, modelRequests, avatarRequests: () => avatarRequests,
     close: () => new Promise<void>((resolve) => { server.close(() => { resolve() }); server.closeAllConnections() }),
   }
 }
@@ -131,6 +151,10 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     const overlay = join(root, 'account-login.overlay.yml')
     await writeFile(overlay, (await readFile(OVERLAY_TEMPLATE, 'utf8')).replaceAll('{{origin}}', platform.origin))
     scaffold = await launchWebScaffold({ extraOverlayPath: overlay })
+    await scaffold.ctx.settings.update('llm-pi-ai', { providers: { 'user-owned': {
+      displayName: 'Self Managed', api: 'openai-completions', baseURL: 'https://byok.example/v1',
+      models: [{ id: 'private-model', contextWindow: 65536, maxTokens: 4096 }],
+    } } })
     browser = await chromium.launch()
   })
 
@@ -141,13 +165,15 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     if (root !== undefined) await rm(root, { recursive: true, force: true })
   })
 
-  it('signs in through a themed tab and recovers both avatars on a later Settings entry', async () => {
+  it('登录后恢复头像、启用平台模型和三档思考，退出后保留自备模型配置', async () => {
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: 'en-US', colorScheme: 'dark' })
     onTestFinished(() => context.close())
     const page = await context.newPage()
     const console = watchConsole(page)
     onTestFailed(() => saveFailureShot(page, 'web-e2e-account-login'))
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    const observations: string[] = []
+    observations.push(`signed-out.platform-models=${(await scaffold.ctx.llm.listModels('deepseek-account')).length}`)
     const menu = page.getByRole('button', { name: 'Account menu', exact: true })
     await menu.click()
     const tab = context.waitForEvent('page')
@@ -226,6 +252,42 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     await expect.poll(() => account.locator('img').count()).toBe(1)
     await capture('Settings entry after rendered failure')
     await compareOrRefreshGolden(AVATAR_EXPECTED, states.join('\n'), MODE)
+    await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    await settings.waitFor({ state: 'detached' })
+    await connectFreshWorkspace(page, scaffold.workspaceCwd)
+    const trigger = page.getByRole('button', { name: /^Select model/ })
+    await trigger.click()
+    const modelCell = page.getByRole('menuitem', { name: /^Model / })
+    if (await modelCell.isVisible()) await modelCell.click()
+    await page.getByRole('menuitemradio', { name: PLATFORM_MODEL.name, exact: true }).click()
+    await expect.poll(() => trigger.getAttribute('aria-label')).toBe('Select model, current Platform Code, reasoning effort Medium')
+    await trigger.click()
+    await page.getByRole('menuitem', { name: /^Effort / }).click()
+    const levels = page.getByRole('menuitemradio')
+    await expect.poll(() => levels.allTextContents()).toEqual(['Low', 'Medium', 'High'])
+    observations.push(`signed-in.efforts=${(await levels.allTextContents()).join(',')}`)
+    observations.push(`signed-in.default=${await page.getByRole('menuitemradio', { name: 'Medium', exact: true }).getAttribute('aria-checked')}`)
+    await page.getByRole('menuitemradio', { name: 'High', exact: true }).click()
+    const settled = scaffold.whenTurnSettled()
+    await page.locator('[data-composer-input][contenteditable="true"]').last().fill('Confirm the platform model connection.')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    const sessionId = await settled
+    await page.getByText('PLATFORM_MODEL_OK', { exact: true }).first().waitFor()
+    const request = platform.modelRequests.find(value => value.model === PLATFORM_MODEL.id)
+    expect(request).toMatchObject({ model: PLATFORM_MODEL.id, reasoning_effort: 'high', max_tokens: PLATFORM_MODEL.max_output_tokens })
+    const session = scaffold.ctx.sessions.get(sessionId)
+    const contextEvent = session?.snapshotEvents().find(event => event.type === 'request/context')
+    expect(contextEvent).toMatchObject({ data: { contextWindow: PLATFORM_MODEL.context_window } })
+    observations.push(`request.effort=${String(request?.reasoning_effort)}`)
+    observations.push(`request.context-window=${contextEvent?.type === 'request/context' ? contextEvent.data.contextWindow : 'missing'}`)
+    await menu.click()
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
+    await page.getByRole('dialog', { name: 'Sign out', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click()
+    await expect.poll(() => menu.textContent()).not.toBe('Web User')
+    observations.push(`signed-out.platform-models=${(await scaffold.ctx.llm.listModels('deepseek-account')).length}`)
+    const byok = await scaffold.ctx.llm.resolveModelInfo('user-owned', 'private-model')
+    observations.push(`byok.context-window=${String(byok.context?.contextWindow)}`)
+    await compareOrRefreshGolden(MODELS_EXPECTED, observations.join('\n'), MODE)
     expect(console.pageErrors).toEqual([])
     await context.close()
   }, 90_000)

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { FreeCodeAdapter, registerFreeCode } from '../src/freecode.ts'
 import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
@@ -8,7 +8,8 @@ import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 const cleanups: Array<() => Promise<unknown>> = []
 afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); await closeMockServers(); vi.restoreAllMocks() })
 const token = 'test-platform-token'
-const model = { id: 'platform-model', name: '平台模型', protocol: 'chat_completions', max_input_tokens: 32768, max_output_tokens: 1024 }
+const model = { id: 'platform-model', name: '平台模型', protocol: 'chat_completions', max_input_tokens: 261120, max_output_tokens: 1024,
+  context_window: 262144, reasoning_efforts: ['low', 'medium', 'high'], default_reasoning_effort: 'medium' }
 const listing = JSON.stringify({ data: [model] })
 const message = createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'model', provider: 'test', model: 'test' } })
 
@@ -47,7 +48,7 @@ it('平台 Chat 调用发送 Bearer 和输出上限，模型目录不泄露凭�
   expect(server.headers.every(headers => headers.authorization === `Bearer ${token}`)).toBe(true)
   expect(server.headers.every(headers => headers['x-dsh-auth-token'] === undefined)).toBe(true)
   expect(server.headers[1]?.['idempotency-key']).toMatch(/^[a-f0-9-]{36}$/)
-  expect(server.requests[1]).toMatchObject({ max_tokens: 1024, stream: true, stream_options: { include_usage: true } })
+  expect(server.requests[1]).toMatchObject({ max_tokens: 1024, reasoning_effort: 'medium', stream: true, stream_options: { include_usage: true } })
 })
 
 it('游客没有平台模型，但仍保留 BYOK 的注册空间', async () => {
@@ -91,7 +92,7 @@ it('Responses 模型发送到对应端点且保留输出上限', async () => {
   const f = await fixture(server.url)
   await assemble(f.ctx, { provider: 'deepseek-account', model: model.id, messages: [message] })
   expect(server.paths).toEqual(['/v1/models', '/v1/responses'])
-  expect(server.requests[1]).toMatchObject({ model: model.id, max_output_tokens: 1024, stream: true })
+  expect(server.requests[1]).toMatchObject({ model: model.id, max_output_tokens: 1024, reasoning: { effort: 'medium' }, stream: true })
   expect(server.headers[1]?.authorization).toBe(`Bearer ${token}`)
 })
 
@@ -100,10 +101,48 @@ it('模型列表缓存绑定账号，精确模型查询采用服务端容量且�
   const f = await fixture(server.url)
   const adapter = new FreeCodeAdapter(f.ctx, f.deployment)
   expect(await adapter.listModels('deepseek-account')).toEqual([{ provider: 'deepseek-account', id: model.id, name: model.name }])
-  expect(await adapter.resolveModel('deepseek-account', model.id)).toMatchObject({ id: model.id, context: { contextWindow: 33792 }, defaultMaxTokens: 1024 })
+  expect(await adapter.resolveModel('deepseek-account', model.id)).toMatchObject({ id: model.id, context: { contextWindow: 262144 }, defaultMaxTokens: 1024,
+    reasoning: { defaultEffort: 'medium', efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }] } })
   await expect(adapter.resolveModel('deepseek-account', 'unknown')).rejects.toMatchObject({ code: 'MODEL_UNSUPPORTED' })
   for await (const _chunk of adapter.stream({ provider: 'deepseek-account', model: model.id, messages: [message] })) { /* 流消费到终结以验证清理。 */ }
   expect(server.paths).toEqual(['/v1/models', '/v1/chat/completions'])
+})
+
+it.each(['low', 'medium', 'high'] as const)('平台 Chat 请求发送用户选择的 %s 思考等级，上下文始终为 256k', async (effort) => {
+  const server = await mockServer([{ body: listing }, { events: textEvents }])
+  const f = await fixture(server.url)
+  await assemble(f.ctx, { provider: 'deepseek-account', model: model.id, messages: [message], reasoningEffort: ReasoningEffortId(effort) })
+  expect(server.requests[1]).toMatchObject({ reasoning_effort: effort })
+  expect(await f.ctx.llm.resolveModelInfo('deepseek-account', model.id)).toMatchObject({ context: { contextWindow: 262144 } })
+})
+
+it.each(['low', 'medium', 'high'] as const)('平台 Responses 请求发送用户选择的 %s 思考等级', async (effort) => {
+  const server = await mockServer([{ body: JSON.stringify({ data: [{ ...model, protocol: 'responses' }] }) },
+    { status: 503, body: JSON.stringify({ error: { message: 'expected wire capture' } }) }])
+  const f = await fixture(server.url)
+  await assemble(f.ctx, { provider: 'deepseek-account', model: model.id, messages: [message], reasoningEffort: ReasoningEffortId(effort) })
+  expect(server.requests[1]).toMatchObject({ reasoning: { effort }, max_output_tokens: 1024 })
+  expect(server.requests[1]).not.toHaveProperty('reasoning_effort')
+})
+
+it.each(['off', 'xhigh', 'max'])('平台拒绝未提供的 %s 思考等级且不发送模型请求', async (effort) => {
+  const server = await mockServer([{ body: listing }])
+  const f = await fixture(server.url)
+  const result = await assemble(f.ctx, { provider: 'deepseek-account', model: model.id, messages: [message], reasoningEffort: ReasoningEffortId(effort) })
+  expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'UNSUPPORTED_REASONING_EFFORT' } })
+  expect(server.paths).toEqual(['/v1/models'])
+})
+
+it.each([
+  { context_window: 1048576 }, { context_window: undefined }, { max_input_tokens: 262144 },
+  { max_output_tokens: 262144 }, { reasoning_efforts: ['low', 'high'] }, { reasoning_efforts: ['low', 'medium', 'max'] },
+  { reasoning_efforts: ['low', 'medium', 'medium'] }, { reasoning_efforts: null }, { reasoning_efforts: undefined },
+  { default_reasoning_effort: 'high' }, { default_reasoning_effort: undefined },
+])('拒绝偏离平台固定窗口或思考规则的模型目录：%j', async (changes) => {
+  const server = await mockServer([{ body: JSON.stringify({ data: [{ ...model, ...changes }] }) }])
+  const f = await fixture(server.url)
+  await expect(f.ctx.llm.resolveModelInfo('deepseek-account', model.id)).rejects.toMatchObject({ code: 'ACCOUNT_CATALOG_INVALID' })
+  expect(server.paths).toEqual(['/v1/models'])
 })
 
 it.each([401, 503])('模型目录 %s 失败不会返回其他账号缓存', async (status) => {
