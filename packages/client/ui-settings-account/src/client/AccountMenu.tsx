@@ -1,7 +1,8 @@
 /** Sidebar account launcher and locally authoritative sign-out action. */
 import { useEffect, useRef, useState } from 'react'
+import { Big } from 'big.js'
 import {
-  Toast, Menu, IconEllipsisOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
+  Toast, Menu, MenuItemButton, IconEllipsisOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AccountSectionInjected } from './AccountSection.tsx'
@@ -42,7 +43,15 @@ export function AccountMenu({
   const profile = account.details?.profile
   const label = profile === undefined ? null : profile.status === 'ready'
     ? profile.value.name ?? profile.value.contact ?? t('signedIn') : t('signedIn')
+  const identity = profile?.status === 'ready' ? profile.value : undefined
+  const balance = account.details?.balance
+  const points = balance?.status === 'ready' ? balance.points : undefined
   const [open, setOpen] = useState(false)
+  const menuWasOpen = useRef(false)
+  useEffect(() => {
+    if (open && !menuWasOpen.current && signedIn) void refreshAccount()
+    menuWasOpen.current = open
+  }, [open, signedIn, refreshAccount])
   const trigger = useRef<HTMLButtonElement>(null)
   const [busy, setBusy] = useState(false)
   const [signOutImpact, setSignOutImpact] = useState<boolean | 'unknown'>()
@@ -61,7 +70,7 @@ export function AccountMenu({
       notices={account.notices}
       anchor={anchor} title={t('bonusNoticeTitle')} closeLabel={t('close')}
       onShown={bonusNoticeShown} onDismiss={bonusNoticeDismissed} />}
-    <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? undefined : css.signedOutMenu}
+    <Menu open={open} side="top" portal autoFocus className={css.anchor} listClassName={signedIn ? css.accountMenu : css.signedOutMenu}
       anchor={<button ref={trigger} type="button" className={css.trigger} data-collapsed={!wide} data-signed-out={!signedIn} aria-label={t('menu')}
         aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
         {signedIn
@@ -71,20 +80,34 @@ export function AccountMenu({
           : <IconEllipsisOutlineMedium size={14} />}
         {wide && <span className={css.label}>{signedIn ? label : t('more')}</span>}
       </button>}
-      items={[
-        { id: 'settings', label: t('settings'), icon: <IconSettingsOutlineMedium size={16} />,
-          ...(settingsShortcut === undefined ? {} : { shortcut: settingsShortcut }) },
-        { id: 'contact', label: t('contactUs'), icon: <IconPaperPlaneOutlineMedium size={16} /> },
-        ...(signedIn ? [{ id: 'signout', label: t('signOut'), icon: <LogoutIcon />, disabled: busy }]
-          : [{ id: 'signin', label: t('signIn'), icon: <IconUserOutlineMedium size={16} /> }]),
-      ]}
-      onClose={() => { setOpen(false) }}
-      onSelect={(id) => {
-        if (id === 'settings') { setOpen(false); trigger.current?.focus(); openSettings() }
-        else if (id === 'contact') { setOpen(false); contactUs() }
-        else if (id === 'signin') beginSignIn()
-        else void requestSignOut()
-      }} />
+      onClose={() => { setOpen(false) }}>
+      {signedIn && <div className={css.summary} role="group" aria-label={t('accountSummary')}>
+        <div className={css.identity}>
+          <span className={css.summaryAvatar} data-avatar-status={account.avatar?.status}>
+            <AccountAvatar avatar={account.avatar} avatarFailed={avatarFailed} />
+          </span>
+          <div className={css.identityCopy}>
+            <span className={css.name}>{label ?? t('loading')}</span>
+            {identity?.contact && identity.contact !== label && <span className={css.contact}>{identity.contact}</span>}
+            {profile?.status === 'failed' && <span className={css.contact}>{t('profileUnavailable')}</span>}
+          </div>
+        </div>
+        {identity?.id && <div className={css.accountId}><span>{t('accountId')}</span><span>{identity.id}</span></div>}
+        {account.view?.provider === 'freecode' && <div className={css.points}>
+          <span className={css.pointsLabel}>{t('points')}</span>
+          {points !== undefined
+            ? <div className={css.pointsValue}><span>{new Big(points.availableUnits).div(points.unitsPerPoint).toFixed()}</span><span className={css.pointsUnit}>{t('pointsUnit')}</span></div>
+            : <span className={css.balanceStatus} role="status">{t(balance === undefined ? 'loading' : 'pointsUnavailable')}</span>}
+        </div>}
+      </div>}
+      <MenuItemButton icon={<IconSettingsOutlineMedium size={16} />} shortcut={settingsShortcut}
+        onSelect={() => { setOpen(false); trigger.current?.focus(); openSettings() }}>{t('settings')}</MenuItemButton>
+      <MenuItemButton icon={<IconPaperPlaneOutlineMedium size={16} />}
+        onSelect={() => { setOpen(false); contactUs() }}>{t('contactUs')}</MenuItemButton>
+      {signedIn
+        ? <MenuItemButton icon={<LogoutIcon />} disabled={busy} onSelect={() => { void requestSignOut() }}>{t('signOut')}</MenuItemButton>
+        : <MenuItemButton icon={<IconUserOutlineMedium size={16} />} onSelect={beginSignIn}>{t('signIn')}</MenuItemButton>}
+    </Menu>
     {account.loginVisible && !account.onboarding && <SignInDialog account={account} colorScheme={colorScheme}
       start={start} cancel={cancel} t={t}
       close={() => { showLogin(false) }} useApiKey={() => { showLogin(false); openOnboarding('deepseek-official') }} />}

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, act, within } from '@testing-librar
 import { useMemo, useSyncExternalStore } from 'react'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
-import type { AccountDetails, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { AccountDetails, AccountUserId, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PlatformBridge } from '../src/client/PlatformOverlay.tsx'
 import { createPlatformPages, type PlatformPages } from '../src/client/platform-pages.ts'
@@ -21,15 +21,15 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 it('free code 积分保留精度，不显示货币符号或赠金钱包', () => {
   mount({ status: 'credential-stored', attempt: null, provider: 'freecode' }, zh, {
     profile: { status: 'ready', value: { id: null, name: 'Blue', contact: 'blues' } },
-    balance: { status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '1234567', heldUnits: '2000000', unitsPerPoint: '1000000' } },
+    balance: { status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '1234567', unitsPerPoint: '1000000' } },
   })
   expect(screen.getByText('可用积分')).toBeTruthy()
   expect(screen.getByText('1.234567')).toBeTruthy()
-  expect(screen.getByText('预留积分')).toBeTruthy()
-  expect(screen.getByText('2')).toBeTruthy()
+  expect(screen.queryByText('预留积分')).toBeNull()
   expect(screen.queryByText('赠金余额')).toBeNull()
   expect(screen.queryByText('充值')).toBeNull()
   expect(screen.getByRole('link', { name: '账号中心' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: zh.accountInfo }).getAttribute('href')).toBe('http://localhost:8081/usage')
 })
 
 /** One resolved theme snapshot per scheme; the slot's theme hook serves these in the application. */
@@ -44,7 +44,8 @@ function operationsOf(state: Omit<AccountView, 'links'>, details?: Partial<Accou
     ...pages === undefined ? {} : { openPlatformPage: pages.open },
     hooks: {
       account: {
-        getSnapshot: () => ({ view: { ...state, links: { usageUrl: 'http://localhost:8081/usage', topUpUrl: 'http://localhost:8081/top_up' } }, details, avatar, failed: false }),
+        getSnapshot: () => ({ view: { ...state, links: { usageUrl: 'http://localhost:8081/usage', topUpUrl: 'http://localhost:8081/top_up',
+          ...state.provider === 'freecode' ? { external: true } : {} } }, details, avatar, failed: false }),
         subscribe: () => () => {},
       },
       theme: { getSnapshot: () => themeOf('light'), subscribe: () => () => {} },
@@ -114,6 +115,47 @@ async function accountMenu(operations: AccountSectionInjected, snapshot: () => A
     useTheme={selector => selector(operations.hooks.theme.getSnapshot())}
     openOnboarding={() => {}} openSettings={() => {}} t={key => en[key as AccountKey]} />
 }
+
+it('账号菜单显示资料和完整精度积分，每次打开刷新但重绘不重复刷新', async () => {
+  const operations = operationsOf({ status: 'credential-stored', attempt: null, provider: 'freecode' }, {
+    profile: { status: 'ready', value: { id: '3' as AccountUserId, name: 'Blue', contact: 'blues' } },
+    balance: { status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '999141200', unitsPerPoint: '1000000' } },
+  })
+  const snapshot = () => operations.hooks.account.getSnapshot()
+  const view = render(await accountMenu(operations, snapshot, false))
+  expect(screen.queryByText('999.1412')).toBeNull()
+  expect(operations.refreshAccount).not.toHaveBeenCalled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.menu })) })
+  const menu = screen.getByRole('menu')
+  expect(within(menu).getByText('Blue')).toBeTruthy()
+  expect(within(menu).getByText('blues')).toBeTruthy()
+  expect(within(menu).getByText('3')).toBeTruthy()
+  expect(within(menu).getByText('999.1412')).toBeTruthy()
+  expect(within(menu).queryByText('Reserved points')).toBeNull()
+  expect(operations.refreshAccount).toHaveBeenCalledOnce()
+  view.rerender(await accountMenu(operations, snapshot, false))
+  expect(operations.refreshAccount).toHaveBeenCalledOnce()
+  fireEvent.keyDown(menu, { key: 'Escape' })
+  expect(screen.queryByRole('menu')).toBeNull()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.menu })) })
+  expect(operations.refreshAccount).toHaveBeenCalledTimes(2)
+  expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: en.settings })).toBeTruthy()
+  expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: en.signOut })).toBeTruthy()
+})
+
+it.each(['loading', 'failed', 'zero'] as const)('账号菜单正确显示积分%s状态，不把未知余额当作零', async (status) => {
+  const details: Partial<AccountDetails> = status === 'loading' ? {} : { balance: status === 'failed' ? { status: 'failed' }
+    : { status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '0', unitsPerPoint: '1000000' } } }
+  const operations = operationsOf({ status: 'credential-stored', attempt: null, provider: 'freecode' }, details)
+  render(await accountMenu(operations, () => operations.hooks.account.getSnapshot(), false))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.menu })) })
+  const menu = within(screen.getByRole('menu'))
+  if (status === 'zero') expect(menu.getByText('0')).toBeTruthy()
+  else {
+    expect(menu.queryByText('0')).toBeNull()
+    expect(menu.getAllByText(status === 'loading' ? en.loading : en.pointsUnavailable).length).toBeGreaterThan(0)
+  }
+})
 
 it.each([en, zh])('renders account cards without inventing profile or balance data', async (copy) => {
   mount({ status: 'credential-stored', attempt: null }, copy)

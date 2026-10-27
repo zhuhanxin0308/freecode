@@ -37,7 +37,6 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
   let balanceFailure = false
   let balanceReads = 0
   let availableUnits = '0'
-  let heldUnits = '0'
   let legacyRequests: string[] = []
   let accountPageRequests: { url: string; authorization: string | undefined }[] = []
   let screenshots: string | undefined
@@ -46,7 +45,6 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
     balanceFailure = false
     balanceReads = 0
     availableUnits = '0'
-    heldUnits = '0'
     legacyRequests = []
     accountPageRequests = []
     screenshots = undefined
@@ -74,7 +72,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
       if (request.url === '/v1/points') {
         balanceReads++
         if (balanceFailure) { response.writeHead(503).end(); return }
-        reply({ balance: { available_units: availableUnits, held_units: heldUnits }, units_per_point: UNITS_PER_POINT })
+        reply({ balance: { available_units: availableUnits }, units_per_point: UNITS_PER_POINT })
         return
       }
       response.writeHead(404).end()
@@ -433,7 +431,6 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
 
   it('keeps funded credit actions stable and rechecks on reload in English dark mode', async () => {
     availableUnits = '12500000'
-    heldUnits = '2000000'
     await scaffold.ctx.settings.mutate('ui-theme', [{ op: 'set', path: ['preference'], value: 'dark' }])
     page = await desktopPage('en-US')
     const response = page.waitForResponse('**/api/account/getBalance')
@@ -487,7 +484,7 @@ describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () =>
       await page.getByRole('heading', { name: '了解平台积分', exact: true }).waitFor()
       const balance = await scaffold.ctx.deepseekAccount.getBalance(CLIENT)
       expect(balance).toEqual({ status: 'ready', value: [], bonusWallets: [], points: {
-        availableUnits: '0', heldUnits: '0', unitsPerPoint: UNITS_PER_POINT,
+        availableUnits: '0', unitsPerPoint: UNITS_PER_POINT,
       } })
       expect(await page.getByText(/体验赠金|已赠送您/).count()).toBe(0)
       expect(legacyRequests).toEqual([])

@@ -23,7 +23,7 @@ const initSchema = z.object({
 })
 const exchangeSchema = z.object({ access_token: storedSchema.shape.token, token_type: z.literal('Bearer'), expires_at: z.number().int().positive(), user: userSchema })
 const pointsSchema = z.object({
-  balance: z.object({ available_units: z.string().regex(/^\d+$/), held_units: z.string().regex(/^\d+$/) }),
+  balance: z.object({ available_units: z.string().regex(/^\d+$/) }),
   units_per_point: z.string().regex(/^[1-9]\d*$/),
 })
 
@@ -148,7 +148,7 @@ export class FreeCodeAccount extends DeepSeekAccount {
     const result = await this.detail('/v1/points', pointsSchema)
     if (result === null || result === false) return result === null ? null : { status: 'failed' }
     return { status: 'ready', value: [], bonusWallets: [], points: {
-      availableUnits: result.balance.available_units, heldUnits: result.balance.held_units, unitsPerPoint: result.units_per_point,
+      availableUnits: result.balance.available_units, unitsPerPoint: result.units_per_point,
     } }
   }
 

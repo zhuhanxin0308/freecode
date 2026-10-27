@@ -62,9 +62,8 @@ export interface AccountSectionInjected {
     theme: HostObservable<ThemeSnapshot>
   }
   /**
-   * Retry a failed avatar and read the profile, balance, bonus wallets and unnotified bonus once. The Settings launcher
-   * calls it on each entry, and a page opener on return from top-up.
-   * @returns after the account queries settle; image loading completes independently.
+   * 重试失败的头像并读取账号资料、余额和通知；账号菜单、设置页入口以及充值返回时共用此操作。
+   * @returns 账号查询完成后的结果；头像加载独立完成。
    */
   refreshAccount: () => Promise<void>
   /** Open the external support questionnaire with the account, build and environment sampled by this click. */
@@ -199,10 +198,6 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
                 ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
                 : platformLink(t('balanceUnavailable'), css.unavailableLink)}
         </div>
-        {signedIn && points !== undefined && <>
-          <div className={css.divider} />
-          <div className={css.row}><span>{t('heldPoints')}</span><span className={css.amount}>{new Big(points.heldUnits).div(points.unitsPerPoint).toFixed()}</span></div>
-        </>}
         {signedIn && !freecode && showBonusRow && <>
           <div className={css.divider} />
           <div className={css.row}>

@@ -87,7 +87,7 @@ async function fixture(options: { attemptTimeoutMs?: number; logoutMaxRetries?: 
       res.statusCode = rejected ? 401 : 200
       res.end(JSON.stringify({ user: { sub: '3', username: 'blues', nickname: 'Blue', avatar: '' }, is_admin: true }))
     } else if (req.url === '/v1/points') {
-      res.end(JSON.stringify({ balance: { available_units: '1234567', held_units: '2000000' }, units_per_point: '1000000' }))
+      res.end(JSON.stringify({ balance: { available_units: '1234567' }, units_per_point: '1000000' }))
     } else if (req.url === '/v1/auth/logout') {
       res.statusCode = logoutFailed ? 503 : 200
       res.end('{}')
@@ -163,7 +163,7 @@ it('浏览器登录只保存 free code 凭据，积分独立投影且不传给�
   expect(await f.ctx.deepseekAccount.getPlatformSession()).toBeNull()
   expect(JSON.stringify(await f.ctx.deepseekAccount.getState())).not.toContain(token)
   expect(await f.ctx.deepseekAccount.getProfile(client)).toMatchObject({ status: 'ready', value: { name: 'Blue', id: '3' } })
-  expect(await f.ctx.deepseekAccount.getBalance(client)).toEqual({ status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '1234567', heldUnits: '2000000', unitsPerPoint: '1000000' } })
+  expect(await f.ctx.deepseekAccount.getBalance(client)).toEqual({ status: 'ready', value: [], bonusWallets: [], points: { availableUnits: '1234567', unitsPerPoint: '1000000' } })
   expect(await f.ctx.deepseekAccount.getUnnotifiedBonuses(client)).toBeNull()
   expect(await f.ctx.deepseekAccount.ackBonusNotified('3' as AccountUserId, 'legacy' as AccountBonusOrderId, client)).toBe(false)
   expect(f.requests.every(request => !request.path.includes('auth-api') && !request.path.includes('bonus'))).toBe(true)

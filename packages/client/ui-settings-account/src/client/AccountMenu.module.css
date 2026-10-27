@@ -6,6 +6,21 @@
 .avatar { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; border-radius: 50%;
   corner-shape: round; background: var(--dsw-alias-bg-skeleton); color: var(--dsw-alias-label-tertiary); }
 .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.accountMenu[role='menu'] { width: 280px; min-width: 0; max-width: calc(100vw - 24px); }
+.summary { padding: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--dsw-alias-border-l3); }
+.identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.summaryAvatar { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-bg-skeleton); color: var(--dsw-alias-label-tertiary); }
+.identityCopy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.name { color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 500; line-height: 20px; overflow-wrap: anywhere; }
+.contact { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.accountId { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.points { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding: 12px; border-radius: var(--dsw-radius-md); background: var(--dsw-alias-interactive-bg-hover); }
+.pointsLabel { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.pointsValue { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 6px; color: var(--dsw-alias-label-primary); font-size: 24px; font-weight: 500; line-height: 32px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pointsValue > span:first-child { min-width: 0; max-width: 100%; }
+.pointsUnit { color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 400; line-height: 18px; }
+.balanceStatus { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
 /* Signed-out launcher: a 32px More row carrying the 14px ellipsis. */
 .trigger[data-signed-out='true']:not([data-collapsed='true']) { height: 32px; padding: 6px 2px 6px 6px; line-height: 20px; }
 

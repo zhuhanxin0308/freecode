@@ -1,6 +1,6 @@
 - region "Platform points":
   - heading "Platform points" [level=1]
-  - paragraph: Platform models charge points for input, output, and cached tokens. Points are reserved before a request and settled against actual usage. View points in your account portal. Your own API keys and local browsing do not require platform points.
+  - paragraph: All platform models cost 100 points per million tokens, charged after each request based on actual usage. A zero balance prevents new model requests. View points in your account portal. Your own API keys and local browsing do not require platform points.
   - button "Continue"
   - button "Open account portal"
   - button "Back"

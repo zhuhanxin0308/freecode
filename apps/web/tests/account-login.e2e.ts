@@ -2,14 +2,14 @@
 // 仅外部 SSO/网关由本地 HTTP 服务替代，浏览器和主机凭据链保持真实。
 import { createServer, type Server } from 'node:http'
 import { randomInt } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
 import { compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
-import { connectFreshWorkspace, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, REPO_ROOT, saveFailureShot } from './support.ts'
 
 const OVERLAY_TEMPLATE = fileURLToPath(new URL('./fixtures/account-login/cordis.patch.yml', import.meta.url))
 const MODE = webSnapshotMode()
@@ -29,6 +29,7 @@ async function mockPlatform() {
   let state: string | undefined
   let redirectUri: string | undefined
   let avatarRequests = 0
+  let availableUnits = '1234567'
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     if (req.method === 'GET' && req.headers['content-type'] === 'application/json') {
@@ -92,7 +93,7 @@ async function mockPlatform() {
       return
     }
     if (url.pathname === '/v1/points') {
-      reply({ balance: { available_units: '1234567', held_units: '2000000' }, units_per_point: '1000000' })
+      reply({ balance: { available_units: availableUnits }, units_per_point: '1000000' })
       return
     }
     if (url.pathname === '/v1/models') { reply({ data: [PLATFORM_MODEL] }); return }
@@ -135,6 +136,7 @@ async function mockPlatform() {
   const origin = `http://127.0.0.1:${String(address.port)}`
   return {
     origin, inits, pages, modelRequests, avatarRequests: () => avatarRequests,
+    setPoints: (units: string) => { availableUnits = units },
     close: () => new Promise<void>((resolve) => { server.close(() => { resolve() }); server.closeAllConnections() }),
   }
 }
@@ -205,6 +207,14 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     }
     await capture('Initial load')
     await menu.click()
+    const summary = page.getByRole('group', { name: 'Account overview', exact: true })
+    await summary.getByText('1.234567', { exact: true }).waitFor()
+    expect(await summary.getByText('Web User', { exact: true }).count()).toBe(1)
+    expect(await summary.getByText('web-user', { exact: true }).count()).toBe(1)
+    expect(await summary.getByText('Reserved points', { exact: true }).count()).toBe(0)
+    await expect.poll(platform.avatarRequests).toBe(2)
+    await summary.locator('[data-avatar-status="failed"]').waitFor()
+    await capture('Account menu entry')
     await page.getByRole('menuitem', { name: 'Settings', exact: true }).click()
     const settings = page.getByRole('dialog', { name: 'Settings', exact: true })
     const account = settings.getByRole('region', { name: 'Account', exact: true })
@@ -212,10 +222,10 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     expect(await account.getByText('1.234567', { exact: true }).count()).toBe(1)
     expect(await account.getByRole('link', { name: 'Account portal', exact: true }).getAttribute('href')).toBe(`${platform.origin}/account`)
     expect(await account.getByRole('link', { name: 'Top up', exact: true }).count()).toBe(0)
-    await expect.poll(platform.avatarRequests).toBe(2)
-    await account.locator('[data-avatar-status="failed"]').waitFor()
-    expect(await menu.locator('img').count()).toBe(0)
-    expect(await account.locator('img').count()).toBe(0)
+    await expect.poll(platform.avatarRequests).toBe(3)
+    await account.locator('[data-avatar-status="ready"]').waitFor()
+    expect(await menu.locator('img').count()).toBe(1)
+    expect(await account.locator('img').count()).toBe(1)
     await capture('First Settings entry')
     await settings.getByRole('button', { name: 'Close', exact: true }).click()
     await settings.waitFor({ state: 'detached' })
@@ -254,6 +264,24 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     await compareOrRefreshGolden(AVATAR_EXPECTED, states.join('\n'), MODE)
     await settings.getByRole('button', { name: 'Close', exact: true }).click()
     await settings.waitFor({ state: 'detached' })
+    await menu.click()
+    await summary.waitFor()
+    const artifacts = join(REPO_ROOT, '.artifacts')
+    await mkdir(artifacts, { recursive: true })
+    const screenshots = await mkdtemp(join(artifacts, 'account-menu-'))
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.setViewportSize({ width: 390, height: 844 })
+      const card = page.getByRole('menu').filter({ has: summary })
+      await expect.poll(async () => {
+        const box = await card.boundingBox()
+        return box !== null && box.x >= 0 && box.y >= 0 && box.x + box.width <= 390 && box.y + box.height <= 844
+      }).toBe(true)
+      await page.screenshot({ path: join(screenshots, `menu-${colorScheme}-390.png`) })
+    }
+    await page.keyboard.press('Escape')
+    await expect.poll(() => summary.count()).toBe(0)
+    await page.setViewportSize({ width: 1440, height: 960 })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
     const trigger = page.getByRole('button', { name: /^Select model/ })
     await trigger.click()
@@ -280,7 +308,10 @@ describe.skipIf(MODE === 'record')('web e2e: free code account sign-in in a plai
     expect(contextEvent).toMatchObject({ data: { contextWindow: PLATFORM_MODEL.context_window } })
     observations.push(`request.effort=${String(request?.reasoning_effort)}`)
     observations.push(`request.context-window=${contextEvent?.type === 'request/context' ? contextEvent.data.contextWindow : 'missing'}`)
+    platform.setPoints('0')
     await menu.click()
+    await summary.getByText('0', { exact: true }).waitFor()
+    expect(await summary.getByText('Reserved points', { exact: true }).count()).toBe(0)
     await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
     await page.getByRole('dialog', { name: 'Sign out', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click()
     await expect.poll(() => menu.textContent()).not.toBe('Web User')
