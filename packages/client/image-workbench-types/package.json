@@ -1,0 +1,28 @@
+{
+  "name": "@deepseek-ai/dsh-image-workbench-types",
+  "description": "Shared image workbench protocol and resource identities",
+  "version": "0.2.1-rc.2",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhuhanxin0308/freecode.git",
+    "directory": "packages/client/image-workbench-types"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./types": { "types": "./lib/types/types.d.ts", "default": "./lib/types/types.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "peerDependencies": { "@deepseek-ai/cordis": "workspace:~" },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*"
+  }
+}

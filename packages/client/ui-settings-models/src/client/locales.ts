@@ -1,7 +1,9 @@
 /** Copy dictionaries for the Models settings section. */
+import { imageEn, imageZh } from './image-locales.ts'
 
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
+  ...imageEn,
   nav: 'Models',
   deepSeekAccount: 'free code Account',
   title: 'Models',
@@ -143,6 +145,7 @@ export type ModelsKey = keyof typeof en
 
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
+  ...imageZh,
   nav: '模型',
   deepSeekAccount: 'free code 账号',
   title: '模型',

@@ -48,6 +48,14 @@
   // (`*.host.ts`) belong to the host aggregate, which excludes `*.client.*`
   // in turn. `exclude` wins over `include`, so the test glob above stays broad.
   "exclude": [
+    "packages/client/ui-image-workbench/tests/access.spec.ts",
+    "packages/client/ui-image-workbench/tests/network.spec.ts",
+    "packages/client/ui-image-workbench/tests/providers.spec.ts",
+    "packages/client/ui-image-workbench/tests/queue.spec.ts",
+    "packages/client/ui-image-workbench/tests/queue-failures.spec.ts",
+    "packages/client/ui-image-workbench/tests/service.spec.ts",
+    "packages/client/ui-image-workbench/tests/store.spec.ts",
+    "packages/client/ui-image-workbench/tests/store-failures.spec.ts",
     "packages/client/*/tests/**/*.host.spec.ts",
     "packages/client/*/tests/**/*.host.e2e.ts",
     "packages/client/*/tests/**/*.host.ts"
@@ -143,6 +151,8 @@
     { "path": "./packages/client/ui-settings-general/tsconfig.client.json" },
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-plugin-manager/tsconfig.client.json" },
+    { "path": "./packages/client/ui-image-workbench/tsconfig.client.json" },
+    { "path": "./packages/client/image-workbench-types" },
     { "path": "./packages/client/ui-plugin-market" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/locale/tsconfig.client.json" },

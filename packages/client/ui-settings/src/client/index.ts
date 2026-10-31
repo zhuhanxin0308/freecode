@@ -12,6 +12,19 @@ import { SettingsSchemaService } from './schema.ts'
 import { ConfigForms } from './config-form.ts'
 import { SettingsDescribeMirror } from './settings-mirror.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** 由设置壳提供的跨插件导航，随设置壳撤销。 */
+    settingsNavigation: {
+      /**
+       * 打开已注册的设置章节，不改变当前会话。
+       * @param id - settings.section 的章节标识。
+       */
+      openSection(id: string): void
+    }
+  }
+}
+
 export type {
   SettingsLauncherOwnerProps, SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
   SettingsPluginsTabOwnerProps, SettingsSectionOwnerProps, SettingsTriggerOwnerProps,

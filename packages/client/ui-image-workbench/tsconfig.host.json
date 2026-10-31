@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo" },
+  "include": ["src/index.ts", "src/types.ts", "src/host"],
+  "references": [
+    { "path": "../image-workbench-types" },
+    { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
+    { "path": "../../util/brand" }, { "path": "../../util/atomic-write" }, { "path": "../../util/home-paths" },
+    { "path": "../../credentials/credentials" }, { "path": "../../credentials/deepseek-account" },
+    { "path": "../../llm/llm-pi-ai" }, { "path": "../../typert/protocol" }, { "path": "../../settings/settings" },
+    { "path": "../../workspace/workspace" }, { "path": "../../api/remote-access/tsconfig.host.json" }, { "path": "../../web/web-fetch-http" }
+  ]
+}

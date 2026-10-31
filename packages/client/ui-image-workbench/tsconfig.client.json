@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo" },
+  "include": ["src/client", "src/types.ts", "src/css-modules.d.ts"],
+  "references": [
+    { "path": "../image-workbench-types" },
+    { "path": "../../../vendor/cordis" }, { "path": "../../util/brand" }, { "path": "../../util/crypto" }, { "path": "../../typert/protocol" },
+    { "path": "../../workspace/workspace" }, { "path": "../../api/remotes/tsconfig.client.json" },
+    { "path": "../locale/tsconfig.client.json" }, { "path": "../store" }, { "path": "../ui-layout" },
+    { "path": "../ui-primitives" }, { "path": "../ui-renderer" }, { "path": "../ui-sidebar" },
+    { "path": "../ui-slots" }, { "path": "../ui-settings/tsconfig.client.json" }, { "path": "../ui-settings-account" }
+  ]
+}

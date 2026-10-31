@@ -185,6 +185,13 @@ export class FreeCodeAccount extends DeepSeekAccount {
     }
   }
 
+  /**
+   * 启动独立账号登录，并复用尚未完成的登录尝试。
+   * @param client - 客户端语言与时区信息。
+   * @param callbackOrigin - 接收浏览器回调的本机来源。
+   * @param _source - 调用入口，两种入口共用独立账号登录流程。
+   * @returns 当前账号和登录尝试状态。
+   */
   override async startSignIn(client: AccountClientMetadata, callbackOrigin: string, _source: 'web' | 'desktop'): Promise<AccountView> {
     if (this.removing !== undefined) await this.removing
     this.lifetime.signal.throwIfAborted()

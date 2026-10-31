@@ -66,6 +66,15 @@ afterEach(() => {
 })
 
 describe('product package use', () => {
+  it('图片协议声明可由 Host 和 Client 共用，但不能把任意未使用包声明成协议包', () => {
+    const root = fixture()
+    const directory = 'packages/client/image-workbench-types'
+    pkg(root, directory, '@deepseek-ai/dsh-image-workbench-types')
+    expect(failures(root, { [directory]: { category: 'declarations', reason: '共享图片协议声明。' } })).toBe('')
+    pkg(root, candidateDir, candidate)
+    expect(failures(root, { [directory]: { category: 'declarations', reason: '共享图片协议声明。' }, ...declarations('declarations') }))
+      .toContain('invalid policy category declarations')
+  })
   it('accepts a complete effective composition without build outputs', () => {
     expect(verifyProductUse(fixture(), {})).toMatchObject({ failures: [], optionalPackages: [], configCount: 1 })
   })

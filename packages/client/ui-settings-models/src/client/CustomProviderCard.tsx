@@ -33,6 +33,9 @@ import { ApiKeyInput } from './ApiKeyInput.tsx'
 import { EditorFooter } from './EditorFooter.tsx'
 import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
+import { ImageModelEditor } from './ImageModelEditor.tsx'
+import { imageModelFailure, imageModelValues } from './image-model-drafts.ts'
+import type { ImageModelDraft } from './image-model-drafts.ts'
 import type { ModelDraft } from './ModelListEditor.tsx'
 import { validateReasoningEfforts } from './ModelReasoningEfforts.tsx'
 import { deriveKeyRef } from './store.ts'
@@ -107,6 +110,8 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   const [protocol, setProtocol] = useState(protocols[0] ?? '')
   const [keyDraft, setKeyDraft] = useState('')
   const [models, setModels] = useState<readonly ModelDraft[]>([])
+  const [purpose, setPurpose] = useState<'chat' | 'images'>('chat')
+  const [imageModels, setImageModels] = useState<readonly ImageModelDraft[]>([])
   const [busy, setBusy] = useState(false)
   const [listBusy, setListBusy] = useState(false)
   useEffect(() => { onBusyChange?.(busy || listBusy) }, [busy, listBusy, onBusyChange])
@@ -130,13 +135,15 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   // fallbacks; what a route cannot default is at least one model. Every row of
   // this hand-declared route edits its reasoning levels, so they are checked too.
   const modelFailure = validateDeepSeekModels(models) ?? validateReasoningEfforts(models)
+  const imageFailure = imageModelFailure(imageModels)
   const keyFailure = apiKeyFailure(keyDraft)
   // The typed key with paste whitespace removed. A blank field yields an empty
   // string, which the create path reads as "no key supplied" — a route may
   // legitimately authenticate through the provider's own ambient discovery.
   const keyValue = keyDraft.trim()
   const ready = route.length > 0 && !routeInvalid && !routeTaken
-    && normalizedBaseURL.length > 0 && !baseUrlInvalid && models.length > 0 && modelFailure === undefined
+    && normalizedBaseURL.length > 0 && !baseUrlInvalid
+    && (purpose === 'chat' ? models.length > 0 && modelFailure === undefined : imageModels.length > 0 && imageFailure === undefined)
     && keyFailure === undefined
   // The one blocked gate worth a line under the form. A satisfied card says
   // nothing at all rather than printing an empty paragraph.
@@ -152,9 +159,11 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
     ? undefined
     : normalizedBaseURL.length === 0
       ? t('customNeedsBaseUrl')
-      : modelFailure !== undefined
-        ? `${t('model')} ${String(modelFailure.index + 1)}: ${t(modelFailure.key)}`
-        : t('customNeedsModels')
+      : purpose === 'images'
+        ? imageModels.length === 0 ? t('imageNeedsModel') : undefined
+        : modelFailure !== undefined
+          ? `${t('model')} ${String(modelFailure.index + 1)}: ${t(modelFailure.key)}`
+          : t('customNeedsModels')
 
   /** Perform the create, returning a failure message or undefined. */
   const createOnce = async (): Promise<string | undefined> => {
@@ -168,9 +177,10 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         // key left blank keeps its provider-native auth path (a credential
         // chain, ADC) instead of resolving a reference nothing ever sets.
         ...storesKey ? { apiKeyEnv: keyRef } : {},
-        api: protocol,
         baseURL: normalizedBaseURL,
-        models: models.map(model => ({ ...model })),
+        ...purpose === 'images'
+          ? { chatEnabled: false, imageModels: imageModelValues(imageModels) }
+          : { api: protocol, models: models.map(model => ({ ...model })) },
       }
       // `taken` is a snapshot too, so the id check alone cannot see a route
       // declared after this card opened; the revision makes that race a
@@ -215,6 +225,14 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
 
   return (
     <div className={styles['editor']}>
+      <label className={styles['field']}>
+        <span className={styles['fieldLabel']}>{t('providerPurpose')}</span>
+        <select className={`${styles['input']} ${styles['selectInput']}`} value={purpose} aria-label={t('providerPurpose')}
+          disabled={profileDisabled || listBusy} onChange={(event) => { setPurpose(event.target.value === 'images' ? 'images' : 'chat') }}>
+          <option value="chat">{t('purposeChat')}</option>
+          <option value="images">{t('purposeImages')}</option>
+        </select>
+      </label>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('customRoute')}</span>
         <input
@@ -260,7 +278,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         />
       </div>
       {baseUrlInvalid ? <p className={styles['error']}>{t('customBaseUrlInvalid')}</p> : null}
-      <div className={styles['field']}>
+      {purpose === 'chat' ? <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('customApi')}</span>
         <select
           className={`${styles['input']} ${styles['selectInput']}`}
@@ -271,7 +289,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         >
           {protocols.map(choice => <option key={choice} value={choice}>{protocolLabel(t, choice)}</option>)}
         </select>
-      </div>
+      </div> : null}
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('keyInput')}</span>
         <ApiKeyInput
@@ -289,7 +307,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           ? null
           : <p className={styles['error']}>{t(keyFailure === 'keyBlank' ? 'keyBlankNew' : keyFailure)}</p>}
       </div>
-      <ModelListEditor
+      {purpose === 'images' ? <ImageModelEditor models={imageModels} onChange={setImageModels} t={t} disabled={profileDisabled} /> : <ModelListEditor
         models={models}
         onChange={setModels}
         reasoningLevels={reasoningLevels}
@@ -306,7 +324,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         t={t}
         disabled={profileDisabled}
         onBusyChange={setListBusy}
-      />
+      />}
       {failure !== undefined ? <p className={styles['error']}>{failure}</p> : null}
       {/* Only the gates with something to say render; the route-id gate has its
           own field-level hint, so its blocked state would print an empty line. */}

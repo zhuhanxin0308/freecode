@@ -42,6 +42,9 @@ import type {
   RouteCatalog,
 } from './catalog.ts'
 import { buildProvider, supportedProtocols } from './provider.ts'
+import { ImageModelSchema, resolveImageModels } from './image-models.ts'
+import type { ImageModelProfile, ResolvedImageModelProfile } from './image-models.ts'
+import { resolveConfiguredImageProviders } from './image-providers.ts'
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
@@ -90,6 +93,10 @@ export type {
 
 /** Configuration for one pi-ai provider route; the `providers` dict key IS the route. */
 export interface PiAiProviderProfile {
+  /** 是否提供聊天模型；关闭后仍保留图片模型与原有凭据配置。 */
+  chatEnabled?: boolean
+  /** 独立的 OpenAI Images 模型能力，不参与聊天模型目录或 SDK 解析。 */
+  imageModels?: ImageModelProfile[]
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
   apiKeyEnv?: string
   /** Name shown by configuration surfaces; defaults to the route key. */
@@ -184,9 +191,13 @@ export interface PiAiProviderProfile {
 
 /** Validated profile with its route stamped and every adapter-owned default resolved. */
 export interface ResolvedPiAiProviderProfile
-  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName'> {
+  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName' | 'imageModels'> {
   /** Harness route key and the `Models` collection key (the configuration dict key). */
   provider: string
+  /** 聊天路由是否参与适配器注册。 */
+  chatEnabled: boolean
+  /** 已归一化且与原配置分离的图片模型能力。 */
+  imageModels: readonly ResolvedImageModelProfile[]
   /** Resolved display name for selectors and configuration surfaces. */
   displayName: string
   /** Validated credential reference, when one is configured. */
@@ -326,6 +337,8 @@ const modelProfile: z<PiAiModelProfile> = z.object({
 const modelOverride: z<PiAiModelOverride> = z.object(modelFields)
 
 const profile = z.object({
+  chatEnabled: z.boolean().default(true),
+  imageModels: z.array(ImageModelSchema),
   apiKeyEnv: z.string().role('credential-ref'),
   displayName: z.string(),
   api: z.union(supportedProtocols()),
@@ -435,6 +448,9 @@ export function resolveProfiles(
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
     }
     assertValidHeaders(provider, source.headers)
+    const imageModels = resolveImageModels(provider, source.imageModels)
+    if (imageModels.length > 0) resolveConfiguredImageProviders({ providers: { [provider]: source } })
+    const chatEnabled = source.chatEnabled ?? true
     const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
     if (!Number.isFinite(streamIdleTimeoutMs)
       || streamIdleTimeoutMs <= 0
@@ -472,26 +488,28 @@ export function resolveProfiles(
     let piProvider: Provider | undefined
     let catalogError: string | undefined
     try {
-      catalog = resolveRouteModels({
-        provider,
-        ...source.api === undefined ? {} : { api: source.api },
-        ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-        ...source.models === undefined ? {} : { models: source.models },
-        ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
-        ...source.compat === undefined ? {} : { compat: source.compat },
-        defaultInput,
-        defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
-        defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
-      }, validation)
-      catalogError = catalog.modelErrors.values().next().value
-      piProvider = buildProvider({
-        provider,
-        displayName,
-        ...source.api === undefined ? {} : { api: source.api },
-        ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-        models: catalog.models,
-        namesCredential: source.apiKeyEnv !== undefined,
-      })
+      if (chatEnabled) {
+        catalog = resolveRouteModels({
+          provider,
+          ...source.api === undefined ? {} : { api: source.api },
+          ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+          ...source.models === undefined ? {} : { models: source.models },
+          ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
+          ...source.compat === undefined ? {} : { compat: source.compat },
+          defaultInput,
+          defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
+          defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
+        }, validation)
+        catalogError = catalog.modelErrors.values().next().value
+        piProvider = buildProvider({
+          provider,
+          displayName,
+          ...source.api === undefined ? {} : { api: source.api },
+          ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+          models: catalog.models,
+          namesCredential: source.apiKeyEnv !== undefined,
+        })
+      }
     } catch (error) {
       if (validation === 'strict' || !(error instanceof PiAiCatalogError)) throw error
       catalogError ??= error.message
@@ -500,6 +518,8 @@ export function resolveProfiles(
     resolved.set(provider, {
       ...rest,
       provider,
+      chatEnabled,
+      imageModels,
       displayName,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },
       streamIdleTimeoutMs,

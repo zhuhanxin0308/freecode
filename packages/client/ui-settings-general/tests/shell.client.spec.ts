@@ -11,6 +11,7 @@ import { createClientTest, type TestClient, webApp } from '@deepseek-ai/dsh-clie
 import { inject } from '../src/client/index.ts'
 import type { SettingsRootInjected } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
+import type { createSettingsShellStore } from '../src/client/shell-store.ts'
 import type { DesktopUpdatePresentation } from '../src/types.ts'
 
 const SELF = '@deepseek-ai/dsh-client-ui-settings-general'
@@ -49,6 +50,22 @@ const PRODUCT_ONBOARDING: readonly { id: string; order: number }[] = [
 ]
 
 describe('ui-settings-general shell', () => {
+  it('跨插件导航打开真实模型设置，并随设置壳卸载撤销', async ({ start }) => {
+    const c = await start()
+    const store = c.ctx.slots.entries('sidebar.settings')[0]?.store as ReturnType<typeof createSettingsShellStore>
+    const instance = store.create()
+    c.ctx.settingsNavigation.openSection('models')
+    expect(instance.getSnapshot()).toEqual({ open: true, activeId: 'models' })
+    await c.reload(SIDEBAR)
+    await c.flush()
+    c.ctx.settingsNavigation.openSection('models')
+    const renewed = c.ctx.slots.entries('sidebar.settings')[0]?.store as ReturnType<typeof createSettingsShellStore>
+    expect(renewed.create().getSnapshot()).toEqual({ open: true, activeId: 'models' })
+    await c.unload(SELF)
+    await c.flush()
+    expect(c.ctx.get('settingsNavigation')).toBeUndefined()
+  }, COLD_BOOT_TIMEOUT_MS)
+
   it('shares one carrier subscription between both update locations and releases it on unload', async ({ start }) => {
     const initial = Promise.withResolvers<DesktopUpdatePresentation>()
     let publish: ((state: DesktopUpdatePresentation) => void) | undefined

@@ -87,6 +87,40 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
 }
 
 describe('llm-pi-ai real dormant composition', () => {
+  it('图片配置实时进入独立目录，聊天启停与图片删除保留同一凭据', async () => {
+    const { ctx } = await loadComposition()
+    const view = () => ctx.settings.describe().find(item => item.ns === 'llm-pi-ai')!
+    const originalRevision = view().revision
+    await ctx.settings.mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'studio'], value: {
+      chatEnabled: false, apiKeyEnv: 'PI_COMPOSITION_KEY', baseURL: 'https://images.example/v1',
+      imageModels: [{ id: 'image-model', sizes: ['1024x1024'], qualities: ['auto'], backgrounds: ['auto'], formats: ['png'], supportsEdit: false, maxReferenceImages: 0 }],
+    } }], originalRevision)
+    await vi.waitFor(() => {
+      expect(ctx.llm.listConfigurableProviders().some(item => item.provider === 'studio')).toBe(true)
+      expect(ctx.llm.listProviders()).toEqual([])
+    })
+    const images = LlmPiAi.resolveConfiguredImageProviders(view().value)
+    expect(images[0]?.imageModels.map(model => model.id)).toEqual(['image-model'])
+    expect((await ctx.credentials.resolve(images[0]!.apiKeyEnv!))?.value).toBe('key-from-store')
+    await ctx.settings.mutate('llm-pi-ai', [
+      { op: 'set', path: ['providers', 'studio', 'chatEnabled'], value: true },
+      { op: 'set', path: ['providers', 'studio', 'api'], value: 'openai-completions' },
+      { op: 'set', path: ['providers', 'studio', 'models'], value: [{ id: 'chat-model' }] },
+    ], view().revision)
+    await vi.waitFor(() => { expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['studio']) })
+    expect((await ctx.llm.listModels('studio')).map(model => model.id)).toEqual(['chat-model'])
+    await expect(ctx.settings.mutate('llm-pi-ai', [
+      { op: 'set', path: ['providers', 'studio', 'imageModels'], value: [] },
+    ], originalRevision)).rejects.toThrow()
+    expect(LlmPiAi.resolveConfiguredImageProviders(view().value)).toHaveLength(1)
+    await ctx.settings.mutate('llm-pi-ai', [
+      { op: 'set', path: ['providers', 'studio', 'imageModels'], value: [] },
+    ], view().revision)
+    expect(LlmPiAi.resolveConfiguredImageProviders(view().value)).toEqual([])
+    expect((await ctx.llm.listModels('studio')).map(model => model.id)).toEqual(['chat-model'])
+    expect((await ctx.credentials.resolve(images[0]!.apiKeyEnv!))?.value).toBe('key-from-store')
+  })
+
   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([{ events: textEvents }])

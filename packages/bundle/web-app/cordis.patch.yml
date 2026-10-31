@@ -317,6 +317,8 @@
     # Without a profile-backed Host it reports itself unavailable.
     - id: ui-plugin-manager
       name: '@deepseek-ai/dsh-client-ui-plugin-manager'
+    - id: ui-image-workbench
+      name: '@deepseek-ai/dsh-client-ui-image-workbench'
 
     # Read-only Plugin list tab in the Settings Plugins section; the built-in
     # bundles the sidebar page leaves out are inspected here.

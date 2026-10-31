@@ -29,6 +29,18 @@ const experimental = {
   },
 } satisfies WorkspaceManifest
 
+it.each(['packages/client/ui-image-workbench', 'packages/client/image-workbench-types'])(
+  '独立产品包 %s 必须指向实际源码，不能沿用不存在的上游路径', (dir) => {
+    const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+    expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, repository: {
+      type: 'git', url: 'git+https://github.com/deepseek-ai/deepseek-harness.git', directory: dir,
+    } } })).toEqual([expect.stringContaining(
+      `release member repository must use git+https://github.com/zhuhanxin0308/freecode.git with directory ${dir}`,
+    )])
+  },
+)
+
 describe('workspace dependency ranges', () => {
   const dependency = { dir: 'packages/core/runtime', manifest: { name: '@deepseek-ai/dsh-runtime' } }
   const cli = { dir: 'apps/cli', manifest: { name: '@deepseek-ai/dsh' } }

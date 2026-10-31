@@ -91,6 +91,9 @@ export type {
 } from './config.ts'
 export { recordKeyFor } from './auth.ts'
 export { supportedProtocols } from './provider.ts'
+export { resolveConfiguredImageProviders } from './image-providers.ts'
+export type { ResolvedImageProviderProfile } from './image-providers.ts'
+export type { ImageModelProfile, ResolvedImageModelProfile } from './image-models.ts'
 
 export const name = 'llm-pi-ai'
 export const inject = ['llm']
@@ -104,6 +107,7 @@ const NS = 'llm-pi-ai'
  */
 function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>): unknown {
   return [...profiles.entries()]
+    .filter(([, profile]) => profile.chatEnabled)
     // `displayName` rides along because the registry hands it to every selector
     // through `providerInfo()`: a rename that did not re-register would leave
     // the old label showing until some unrelated fact happened to change.
@@ -298,7 +302,7 @@ export function apply(ctx: Context, config: Config): void {
     // conflicting route leaves the previous routes serving requests, and
     // `registeredFacts` only advances once the registry actually holds the
     // new set — so returning to a working configuration always re-applies.
-    const routes = [...profiles().keys()]
+    const routes = [...profiles()].filter(([, profile]) => profile.chatEnabled).map(([provider]) => provider)
     if (registration === undefined) {
       // Dormant bare mount: nothing is registered until a section supplies
       // profiles, and an empty section keeps it that way.

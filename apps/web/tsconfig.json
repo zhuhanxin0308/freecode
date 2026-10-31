@@ -120,6 +120,7 @@
     "tests/onboarding-deepseek-config.e2e.ts",
     "tests/onboarding-native.e2e.ts",
     "tests/desktop-onboarding.e2e.ts",
+    "tests/image-workbench.e2e.ts",
     "tests/native-window-material.e2e.ts",
     "tests/ambient-theme.e2e.ts",
     "tests/bonus-notice.e2e.ts",

@@ -30,6 +30,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@deepseek-ai/dsh-image-workbench-types": "workspace:*",
     "@deepseek-ai/cordis-plugin-group": "workspace:~",
     "@deepseek-ai/dsh-client-modules": "workspace:*",
     "@deepseek-ai/dsh-client-store": "workspace:*",
@@ -39,6 +40,7 @@
     "@deepseek-ai/dsh-client-ui-dockkit": "workspace:*",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-image-workbench": "workspace:*",
     "@deepseek-ai/dsh-client-web": "workspace:*",
     "@deepseek-ai/dsh-cmdline": "workspace:*",
     "@deepseek-ai/dsh-pwsh-local": "workspace:*",
@@ -56,6 +58,7 @@
     "playwright": "^1.49.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "sharp": "0.35.5",
     "typescript": "^6.0.3",
     "vite": "^6.4.3",
     "vitest": "^4.1.11",

@@ -36,6 +36,16 @@ export type { AccountMenuProps } from './AccountMenu.tsx'
 export type { AccountSnapshot } from './AccountSection.tsx'
 export type { AccountKey } from './locales.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** 账号插件拥有的登录入口，随其生命周期撤销。 */
+    accountNavigation: {
+      /** 打开现有登录界面，并使用相同的桌面或浏览器登录动作。 */
+      openSignIn(): void
+    }
+  }
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'settings.account': AccountKey }
 }
@@ -265,6 +275,15 @@ export function apply(ctx: Context): void {
       throw result.error
     },
   }
+  ctx.effect(() => {
+    const disposeNavigation = ctx.reflect.provide('accountNavigation', {
+      openSignIn: () => {
+        if (disposed) return
+        void operations.start().catch((_error: unknown) => { /* 既有登录动作已将错误显示到账号弹窗。 */ })
+      },
+    })
+    return () => { void disposeNavigation() }
+  }, 'account: 跨插件登录入口')
   if (desktop) {
     const controller = new DesktopOnboardingController(
       ctx.configForms.get<OnboardingSettings>(DESKTOP_ONBOARDING_NAMESPACE),

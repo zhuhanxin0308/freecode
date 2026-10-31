@@ -61,6 +61,12 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
 
 /** Runtime exports that require every consumer to resolve the provider's shared peer instance. */
 const PEER_REQUIRED_HOST_EXPORTS = {
+  // 图片工作台与已挂载的主机服务共用网络、凭据和文件处理包。
+  '@deepseek-ai/dsh-web-fetch-http': ['resolvePublicAddresses', 'createPinnedLookup'],
+  '@deepseek-ai/dsh-credentials': ['isCredentialKeySegment'],
+  '@deepseek-ai/dsh-llm-pi-ai': ['recordKeyFor', 'resolveConfiguredImageProviders'],
+  '@deepseek-ai/dsh-atomic-write': ['withFileLock', 'writeFileAtomic'],
+  '@deepseek-ai/dsh-home-paths': ['resolveDshHome'],
   // `instanceof` checks need the translator's own class instance.
   '@deepseek-ai/dsh-experimental-translator': ['TranslationError'],
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'createScope', 'scopeOf', 'scopeTarget'],

@@ -214,7 +214,10 @@ export function apply(ctx: ClientContext): void {
       },
       inject: shellInjected,
     }, SettingsRoot)
-    return () => { disposeCommand(); disposeSlot() }
+    const disposeNavigation = ctx.reflect.provide('settingsNavigation', {
+      openSection: (id: string) => { shellInstance.actions.openSection(id) },
+    })
+    return () => { void disposeNavigation(); disposeCommand(); disposeSlot() }
   })
 
   ctx.slots.inject('settings.trigger', () =>

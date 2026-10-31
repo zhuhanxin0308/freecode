@@ -33,6 +33,8 @@ import type { DeepSeekModelsValidationFailure } from './DeepSeekModelsEditor.tsx
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
+import { ImageModelEditor } from './ImageModelEditor.tsx'
+import { imageModelDrafts, imageModelFailure, imageModelValues } from './image-model-drafts.ts'
 import { validateReasoningEfforts } from './ModelReasoningEfforts.tsx'
 import type { ReasoningEffortsFailure } from './ModelReasoningEfforts.tsx'
 import { deriveKeyRef, protocolChoices, reasoningLevelChoices } from './store.ts'
@@ -197,6 +199,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const fallback = schema.getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
   const layout = layoutOf(namespace.ns)
+  const chatEnabled = layout !== 'pi-ai' || (schema.getPath(draft, ['chatEnabled']) ?? schema.getPath(fallback, ['chatEnabled'])) !== false
+  const imagesOverridden = schema.hasPath(draft, ['imageModels'])
+  const inheritedImages: unknown = schema.getPath(namespace.base, [...settingsPath, 'imageModels'])
+    ?? schema.nodeAtPath(root, [...settingsPath, 'imageModels'])?.meta.default
+  const images = imageModelDrafts(imagesOverridden ? schema.getPath(draft, ['imageModels']) : inheritedImages)
+  const imageFailure = layout === 'pi-ai' ? imageModelFailure(images) : undefined
   const keyRef = refFor(schema, namespace, settingsPath, props.provider)
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -234,7 +242,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const editsReasoning = reasoningLevels.length > 0
   const validateModels = (value: unknown): DeepSeekModelsValidationFailure | ReasoningEffortsFailure | undefined =>
     validateDeepSeekModels(value) ?? (editsReasoning ? validateReasoningEfforts(value) : undefined)
-  const modelFailure = validateModels(schema.getPath(draft, ['models']))
+  const modelFailure = chatEnabled ? validateModels(schema.getPath(draft, ['models'])) : undefined
   const keyFailure = apiKeyFailure(keyDraft)
   // What a probe or a write must carry: the typed key with paste whitespace
   // removed. A blank field yields an empty string, which both call sites read
@@ -278,7 +286,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       // with a bad row; it stays because the schema check below would refuse
       // the write with a message naming a path instead of the row, and because
       // nothing but this function decides what is written.
-      const failure = validateModels(schema.getPath(next, ['models']))
+      const failure = chatEnabled ? validateModels(schema.getPath(next, ['models'])) : undefined
       /* v8 ignore next 3 -- unreachable from the card: the same failure disables submit */
       if (failure !== undefined) {
         return `${t('model')} ${String(failure.index + 1)}: ${t(failure.key)}`
@@ -488,7 +496,18 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
             </div>
             {/* The protocol sits beside the endpoint it describes, as it does
                 on the create card. */}
-            {ownsIdentity
+            {family === 'pi-ai' ? <label className={styles['modelFieldLabel']}>
+              <input type="checkbox" checked={chatEnabled} aria-label={t('chatModelsEnabled')} disabled={disabled || listBusy}
+                onChange={(event) => {
+                  const enabled = event.target.checked
+                  setDraft((current) => {
+                    const next = schema.setPath(current, ['chatEnabled'], enabled)
+                    return enabled && ownsIdentity && probeApi === undefined && protocols[0] !== undefined
+                      ? schema.setPath(next, ['api'], protocols[0]) : next
+                  })
+                }} /> {t('chatModelsEnabled')}
+            </label> : null}
+            {ownsIdentity && chatEnabled
               ? (
                 <div className={styles['field']}>
                   <span className={styles['fieldLabel']}>{t('customApi')}</span>
@@ -524,7 +543,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                   defaultMaxTokens={typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined}
                 />
               )
-              : (
+              : chatEnabled ? (
                 <ModelListEditor
                   {...catalogProps}
                   catalogProvider={props.declared === true ? undefined : props.provider}
@@ -535,7 +554,10 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                   operations={operations}
                   onBusyChange={setListBusy}
                 />
-              )}
+              ) : null}
+            {family === 'pi-ai' ? <ImageModelEditor models={images} t={t} disabled={disabled}
+              onChange={(next) => { setDraft(current => schema.setPath(current, ['imageModels'], imageModelValues(next))) }}
+              {...imagesOverridden ? { onReset: () => { setDraft(current => schema.deletePath(current, ['imageModels'])) } } : {}} /> : null}
           </div>
         </details>}
       </>
@@ -570,6 +592,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         busy={busy}
         submitDisabled={disabled || layout === 'unknown'
           || (props.credentialOnly !== true && modelFailure !== undefined)
+          || (props.credentialOnly !== true && imageFailure !== undefined)
           || shownKeyFailure !== undefined
           || (props.credentialRequired === true && keyValue.length === 0)}
         submitLabelKey={props.submitLabelKey ?? 'apply'}

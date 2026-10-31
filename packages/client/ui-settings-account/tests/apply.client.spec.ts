@@ -63,6 +63,26 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
+it('跨插件账号入口复用既有登录动作、呈现失败并随插件卸载撤销', async ({ start }) => {
+  vi.stubGlobal('dshDesktop', {})
+  const c = await start()
+  const actions = operations(c)
+  c.mock.remote.account.startSignIn.mockResolvedValueOnce(ok(view))
+  const navigation = c.ctx.accountNavigation
+  navigation.openSignIn()
+  await vi.waitFor(() => { expect(c.mock.remote.account.startSignIn).toHaveBeenCalledOnce() })
+  expect(actions.hooks.account.getSnapshot().loginVisible).toBe(true)
+  expect(c.mock.remote.account.startSignIn.mock.calls[0]?.[2]).toBe('desktop')
+  c.mock.remote.account.startSignIn.mockRejectedValueOnce(new Error('连接中断'))
+  navigation.openSignIn()
+  await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().loginFailed).toBe(true) })
+  await c.unload(SELF)
+  await c.flush()
+  expect(c.ctx.get('accountNavigation')).toBeUndefined()
+  navigation.openSignIn()
+  expect(c.mock.remote.account.startSignIn).toHaveBeenCalledTimes(2)
+}, 60_000)
+
 it('free code 账号中心在系统浏览器打开，返回时刷新且释放后不留下监听', async ({ start }) => {
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   const platform = { open: vi.fn(), setBounds: vi.fn(), close: vi.fn() }

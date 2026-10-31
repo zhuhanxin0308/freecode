@@ -185,7 +185,11 @@ export class FreeCodeAdapter extends LlmAdapter {
   }
 }
 
-/** @param ctx - 插件生命周期。 @param config - 网关目录设置。 */
+/**
+ * 在当前插件生命周期注册独立平台的聊天模型。
+ * @param ctx - 插件生命周期。
+ * @param config - 网关目录设置。
+ */
 export function registerFreeCode(ctx: Context, config: Deployment): void {
   const adapter = new FreeCodeAdapter(ctx, config)
   ctx.effect(() => ctx.llm.registerAdapter([PROVIDER], adapter), 'freecode: 平台模型')
