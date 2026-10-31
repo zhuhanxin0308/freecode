@@ -1,7 +1,28 @@
 /** Recorded npm evidence stays intact while authored files and exact edits remain checked. */
 
 import { describe, expect, it } from 'vitest'
-import { exactEditState, isRescopeExcluded } from './rescope-vendor.ts'
+import { exactEditState, isRescopeExcluded, rewriteVendorNames } from './rescope-vendor.ts'
+
+describe('保留产品标识并检查包引用', () => {
+  const file = 'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx'
+  it('保留预设和事件名', () => {
+    expect(rewriteVendorNames("const preset = 'cordis'", file)).toBe("const preset = 'cordis'")
+    expect(rewriteVendorNames("ctx.on('cordis/inspect-query', handler)", 'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts'))
+      .toBe("ctx.on('cordis/inspect-query', handler)")
+    expect(rewriteVendorNames("    name: 'cordis/inspect-query',", 'packages/extensions/tool-cordis/src/api-catalog.ts'))
+      .toBe("    name: 'cordis/inspect-query',")
+  })
+  it.each(["import { Context } from 'cordis'", "export * from 'cordis'", "declare module 'cordis'", "import('cordis')", "require('cordis')"])(
+    '仍改写真实模块引用：%s', (source) => {
+      expect(rewriteVendorNames(source, file)).toBe(source.replace("'cordis'", "'@deepseek-ai/cordis'"))
+    },
+  )
+  it('仅保留 YAML 中的产品说明，仍检查插件名称', () => {
+    const file = 'packages/bundle/web-app/cordis.patch.yml'
+    expect(rewriteVendorNames('# preset: `cordis`\n- name: cordis\n', file))
+      .toBe('# preset: `cordis`\n- name: @deepseek-ai/cordis\n')
+  })
+})
 
 const ANCHOR = '\n## Sync procedure'
 const INSERTED = `\n15. **rescope**: one log entry.\n${ANCHOR}`

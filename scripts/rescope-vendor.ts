@@ -76,6 +76,28 @@ interface GenericSkip {
 }
 
 const GENERIC_SKIPS: readonly GenericSkip[] = [
+  // 这些文件中的同名值属于预设、事件或界面命名空间；模块引用仍单独检查。
+  ...[
+    'apps/cli/tests/optional-bundle-transitions.e2e.ts',
+    'apps/web/tests/agent-preset-selection.e2e.ts',
+    'apps/web/tests/developer-tools-settings.e2e.ts',
+    'docs/subsystems/schedule.md',
+    'docs/subsystems/schedule.zh.md',
+    'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.md',
+    'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.zh.md',
+    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md',
+    'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.zh.md',
+    'docs/user/guide/schedule.md',
+    'docs/user/guide/schedule.zh.md',
+    'packages/bundle/web-app/cordis.patch.yml',
+    'packages/client/ui-agent-preset/src/client/CreatePluginMenuItem.tsx',
+    'packages/client/ui-agent-preset/tests/components.client.spec.tsx',
+    'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx',
+    'packages/client/ui-agent-preset/tests/section-store.client.spec.ts',
+    'packages/extensions/cordis-host-runner/tests/inspect-registry.spec.ts',
+    'snapshots/session/cordis-inspect-liveness/client-fixture.mjs',
+    'snapshots/session/cordis-inspect-timeout/client-fixture.mjs',
+  ].map(file => ({ file, upstream: ['cordis'] })),
   // `Symbol.for('schemastery')` and the `vendor:` metadata field are upstream identifiers.
   { file: 'vendor/schemastery/src/index.ts', upstream: ['schemastery'] },
   // Narrows a Standard Schema by the same upstream `vendor:` identifier.
@@ -432,6 +454,7 @@ const VENDORED_LIBRARY = /^@deepseek-ai\\/(cosmokit|schemastery)(\\/|$)/
  */
 export function isRescopeExcluded(file: string): boolean {
   if (file === 'scripts/rescope-vendor.ts') return true // the mapping itself
+  if (file === 'scripts/rescope-vendor.spec.ts') return true // 回归用例包含有意保留的旧包名输入。
   if (file.startsWith('.agents/notes/')) return true // notes record what was true when written
   // Recorded model payloads quote documentation verbatim, so they must mirror the
   // sources on disk — including the notes this rescope leaves alone.
@@ -481,11 +504,27 @@ function skipped(file: string, pattern: Pattern): boolean {
 function rewriteLine(line: string, file: string, all: readonly Pattern[]): string {
   let out = line
   for (const pattern of all) {
-    if (skipped(file, pattern)) continue
-    out = out.replace(pattern.token, (_match, quote: string, subpath: string) => `${quote}${pattern.to}${subpath}${quote}`)
+    out = out.replace(pattern.token, (match, quote: string, subpath: string, offset: number) => {
+      // 产品值豁免不覆盖明确的导入、导出、模块扩展或 YAML 插件名称。
+      const prefix = out.slice(0, offset)
+      const moduleReference = /(?:\bfrom\s+|\bmodule\s+|\bimport\s+|\b(?:import|require)\s*\(\s*)$/.test(prefix)
+      const yamlPlugin = /\.(?:ya?ml|md)$/.test(file) && /^\s*(?:-\s*)?name:\s*$/.test(prefix)
+      if (skipped(file, pattern) && !moduleReference && !yamlPlugin) return match
+      return `${quote}${pattern.to}${subpath}${quote}`
+    })
     out = out.replace(pattern.yamlName, (_match, prefix: string, suffix: string) => `${prefix}${pattern.to}${suffix}`)
   }
   return out
+}
+
+/**
+ * 改写包名并保留已登记的同名产品标识。
+ * @param text - 待检查的源码。
+ * @param file - 使用正斜杠的仓库相对路径。
+ * @returns 改写后的源码；不写入文件。
+ */
+export function rewriteVendorNames(text: string, file: string): string {
+  return rewrite(text, file, patterns(false)).text
 }
 
 /**
