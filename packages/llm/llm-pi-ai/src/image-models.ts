@@ -3,7 +3,7 @@ import z from '@deepseek-ai/schemastery'
 
 const IMAGE_BACKGROUNDS = ['auto', 'opaque', 'transparent'] as const
 const IMAGE_FORMATS = ['png', 'jpeg', 'webp'] as const
-const IMAGE_OPTIONAL_PARAMETERS = ['quality', 'background', 'output_format'] as const
+const IMAGE_OPTIONAL_PARAMETERS = ['quality', 'background', 'output_format', 'output_compression', 'moderation', 'input_fidelity'] as const
 
 /** 一项显式声明的 OpenAI Images 模型能力。 */
 export interface ImageModelProfile {
@@ -109,6 +109,9 @@ export function resolveImageModels(provider: string, source: unknown): readonly 
     if (typeof supportsEdit !== 'boolean' || typeof maxReferenceImages !== 'number' || !Number.isSafeInteger(maxReferenceImages)
       || maxReferenceImages < 0 || (supportsEdit ? maxReferenceImages === 0 : maxReferenceImages !== 0)) invalid(provider, index, '参考图编辑能力')
     if (typeof supportsMask !== 'boolean' || (supportsMask && !supportsEdit)) invalid(provider, index, '局部重绘需要参考图编辑能力')
+    if (supportsMask && !formats.includes('png')) invalid(provider, index, '精确局部编辑需要 PNG 输出')
+    if (optionalParameters.includes('input_fidelity') && !supportsEdit) invalid(provider, index, '参考图保真度需要编辑能力')
+    if (optionalParameters.includes('output_compression') && !formats.some(format => format !== 'png')) invalid(provider, index, '压缩参数需要 JPEG 或 WebP 输出')
     return { id, name, sizes, qualities, backgrounds, formats, supportsEdit, supportsMask, maxReferenceImages, optionalParameters }
   })
 }

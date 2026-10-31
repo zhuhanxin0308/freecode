@@ -37,6 +37,16 @@ function operations(view = namespace()) {
 }
 
 describe('图片模型编辑', () => {
+  it('开关新增高级参数不重置已配置的输出格式和画质', () => {
+    const changed = vi.fn<(models: ImageModelDraft[]) => void>()
+    const advanced: ImageModelDraft = { ...model, supportsEdit: true, maxReferenceImages: 1, formats: ['png', 'jpeg'],
+      qualities: ['auto', 'high'], optionalParameters: ['quality', 'output_format', 'output_compression', 'input_fidelity', 'moderation'] }
+    render(<ImageModelEditor models={[advanced]} onChange={changed} disabled={false} t={t} />)
+    for (const label of [en.imageCompressionParameter, en.imageFidelityParameter, en.imageModerationParameter]) {
+      fireEvent.click(screen.getByLabelText(`${label} 1`))
+      expect(changed.mock.lastCall?.[0][0]).toMatchObject({ formats: ['png', 'jpeg'], qualities: ['auto', 'high'] })
+    }
+  })
   it('明确填写能力后才创建纯图片提供商，凭据仍使用已有提供商入口', async () => {
     const ops = operations()
     render(<CustomProviderCard taken={[]} protocols={['openai-completions']} reasoningLevels={[]} revision={7}

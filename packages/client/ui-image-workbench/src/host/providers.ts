@@ -11,8 +11,9 @@ import { ImageFailure } from './errors.ts'
 import { ImageNetwork, type ImageHttpResponse } from './network.ts'
 import type { ImageStore } from './store.ts'
 import type { StoredImageJob } from './schemas.ts'
+import { composeMaskedImage } from './image-processing.ts'
 
-const optionalParameter = z.enum(['quality', 'background', 'output_format'])
+const optionalParameter = z.enum(['quality', 'background', 'output_format', 'output_compression', 'moderation', 'input_fidelity'])
 const platformCatalog = z.object({ data: z.array(z.object({
   id: z.string().min(1).max(256), name: z.string(), sizes: z.array(z.string()), qualities: z.array(z.string()),
   backgrounds: z.array(z.enum(['auto', 'opaque', 'transparent'])), formats: z.array(z.enum(['png', 'jpeg', 'webp'])),
@@ -154,6 +155,9 @@ export class ImageProviders {
     if (model.optionalParameters.includes('quality')) fields.quality = request.quality
     if (model.optionalParameters.includes('background')) fields.background = request.background
     if (model.optionalParameters.includes('output_format')) fields.output_format = request.format
+    if (model.optionalParameters.includes('output_compression') && request.format !== 'png' && request.compression !== undefined) fields.output_compression = request.compression
+    if (model.optionalParameters.includes('moderation') && request.moderation !== undefined) fields.moderation = request.moderation
+    if (model.optionalParameters.includes('input_fidelity') && request.referenceImageIds.length > 0 && request.fidelity !== undefined) fields.input_fidelity = request.fidelity
     const headers = new Headers(profile.headers)
     for (const name of ['host', 'content-length', 'connection', 'content-type']) headers.delete(name)
     headers.set('authorization', `Bearer ${key}`)
@@ -181,13 +185,22 @@ export class ImageProviders {
       .safeParse(this.json(reply))
     if (!value.success) throw new ImageFailure('upstream-rejected', true)
     const image = value.data.data[0]
-    if (image.b64_json !== undefined) return imageBytes(image.b64_json, this.config.maxImageBytes)
+    if (image.b64_json !== undefined) return this.finishCustom(request, imageBytes(image.b64_json, this.config.maxImageBytes))
     if (image.url === undefined) throw new ImageFailure('result-unavailable', true)
     const download = this.network.validateUrl(new URL(image.url))
     if (download.origin !== base.origin && !this.downloadOrigins.has(download.origin)) throw new ImageFailure('unsafe-url', true)
     const result = await this.network.request(download, {}, this.config.maxImageBytes, signal)
     this.checkStatus(result)
-    return result.bytes
+    return this.finishCustom(request, result.bytes)
+  }
+  private async finishCustom(request: ImageGenerationRequest, bytes: Buffer): Promise<Buffer> {
+    if (request.maskImageId === undefined) return bytes
+    const reference = request.referenceImageIds[0]
+    if (reference === undefined) throw new ImageFailure('invalid-input', true)
+    const original = await this.store.readImage(reference, 'original')
+    const mask = await this.store.readImage(request.maskImageId, 'original')
+    try { return await composeMaskedImage(original.bytes, mask.bytes, bytes, this.config) }
+    catch (_error) { throw new ImageFailure('result-unavailable', true) }
   }
   /**
    * 幂等创建或恢复账号所属的平台任务。
@@ -205,6 +218,9 @@ export class ImageProviders {
     const mask = request.maskImageId === undefined ? undefined : await this.store.readImage(request.maskImageId, 'original')
     const body = { model: request.model.id, prompt: request.prompt, size: request.size, quality: request.quality,
       background: request.background, output_format: request.format, ...references.length ? { references } : {},
+      ...request.compression === undefined ? {} : { output_compression: request.compression },
+      ...request.moderation === undefined ? {} : { moderation: request.moderation },
+      ...request.fidelity === undefined ? {} : { input_fidelity: request.fidelity },
       ...mask === undefined ? {} : { mask: { mime_type: mask.mimeType, data_base64: mask.bytes.toString('base64') } } }
     return platformJob.parse(this.json(await this.platformRequest('/v1/image-jobs', job.accountId, body, job.id, signal))).job
   }

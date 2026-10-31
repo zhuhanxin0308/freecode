@@ -10,6 +10,14 @@ const image: ImageModelProfile = {
 }
 
 describe('图片模型配置与聊天目录分离', () => {
+  it('高级能力必须具备对应的输出格式和参考图支持', () => {
+    expect(() => resolveImageModels('studio', [{ ...image, supportsEdit: true, supportsMask: true, maxReferenceImages: 1, formats: ['webp'], optionalParameters: ['output_format'] }]))
+      .toThrow('精确局部编辑需要 PNG 输出')
+    expect(() => resolveImageModels('studio', [{ ...image, optionalParameters: ['input_fidelity'] }])).toThrow('参考图保真度需要编辑能力')
+    expect(() => resolveImageModels('studio', [{ ...image, optionalParameters: ['output_compression'] }])).toThrow('压缩参数需要 JPEG 或 WebP 输出')
+    const advanced = { ...image, supportsEdit: true, maxReferenceImages: 1, formats: ['png', 'jpeg'], optionalParameters: ['output_format', 'output_compression', 'input_fidelity', 'moderation'] }
+    expect(resolveImageModels('studio', [advanced])[0]?.optionalParameters).toEqual(advanced.optionalParameters)
+  })
   it('未配置图片时不猜测能力，也不要求额外端点', () => {
     expect(resolveConfiguredImageProviders({ providers: { openai: {} } })).toEqual([])
     expect(resolveImageModels('openai', undefined)).toEqual([])

@@ -154,6 +154,45 @@ it('sends original reference and mask bytes in multipart while result downloads 
   await expect(f.providers.generateCustom(f.request, new AbortController().signal)).rejects.toMatchObject({ code: 'unsafe-url' })
 })
 
+it('传递可用高级参数，普通生成不携带参考图保真度，平台请求保留选择', async () => {
+  const f = await fixture()
+  const model = f.profile.imageModels[0]!
+  model.formats = ['png', 'jpeg', 'webp']
+  model.optionalParameters = ['output_format', 'output_compression', 'moderation', 'input_fidelity']
+  const advanced = { ...f.request, format: 'jpeg' as const, compression: 0, moderation: 'low' as const, fidelity: 'high' as const }
+  await f.providers.generateCustom(advanced, new AbortController().signal)
+  expect(JSON.parse(f.observed.at(-1)!.body.toString())).toMatchObject({ output_compression: 0, moderation: 'low', output_format: 'jpeg' })
+  expect(JSON.parse(f.observed.at(-1)!.body.toString())).not.toHaveProperty('input_fidelity')
+  await f.providers.generateCustom(f.request, new AbortController().signal)
+  expect(JSON.parse(f.observed.at(-1)!.body.toString())).not.toHaveProperty('output_compression')
+  const reference = await f.store.saveImage(f.image, 'image/png')
+  await f.providers.generateCustom({ ...advanced, referenceImageIds: [reference.id] }, new AbortController().signal)
+  const sent = f.observed.at(-1)!
+  const form = await new Response(new Uint8Array(sent.body), { headers: { 'content-type': String(sent.headers['content-type']) } }).formData()
+  expect(form.get('input_fidelity')).toBe('high')
+  expect(form.get('output_compression')).toBe('0')
+  const job: StoredImageJob = { id: randomUUID() as ImageJobId, status: 'running', createdAt: Date.now(), updatedAt: Date.now(),
+    request: { ...advanced, model: { source: 'platform', id: 'platform-image' }, referenceImageIds: [reference.id] },
+    accountId: f.state.subject, favorite: false, archived: false, images: [] }
+  await f.providers.createPlatform(job, new AbortController().signal)
+  expect(JSON.parse(f.observed.at(-1)!.body.toString())).toMatchObject({ output_compression: 0, moderation: 'low', input_fidelity: 'high' })
+  await f.providers.generateCustom({ ...f.request, format: 'jpeg' }, new AbortController().signal)
+  expect(JSON.parse(f.observed.at(-1)!.body.toString())).not.toHaveProperty('output_compression')
+  await f.providers.generateCustom({ ...f.request, referenceImageIds: [reference.id] }, new AbortController().signal)
+})
+
+it('无法精确合成时标记结果待核实，不发布改变锁定区的结果', async () => {
+  const f = await fixture()
+  const original = await f.store.saveImage(f.image, 'image/png')
+  const opaqueBytes = await sharp({ create: { width: 8, height: 8, channels: 4, background: 'white' } }).png().toBuffer()
+  const opaque = await f.store.saveImage(opaqueBytes, 'image/png')
+  const request = { ...f.request, referenceImageIds: [original.id], maskImageId: opaque.id }
+  await expect(f.providers.generateCustom(request, new AbortController().signal))
+    .rejects.toMatchObject({ code: 'result-unavailable', uncertain: true })
+  await expect(f.providers.generateCustom({ ...f.request, maskImageId: opaque.id }, new AbortController().signal))
+    .rejects.toMatchObject({ code: 'invalid-input', uncertain: true })
+})
+
 it('keeps platform idempotency and original transfer within its signed-in account', async () => {
   const f = await fixture()
   const job: StoredImageJob = { id: randomUUID() as ImageJobId, status: 'running', createdAt: Date.now(), updatedAt: Date.now(),

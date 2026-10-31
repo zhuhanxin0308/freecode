@@ -1,5 +1,12 @@
 /** 图片工作台的界面文案与可恢复错误说明。 */
 export const zh = {
+  pan: '平移',
+  resolution: '分辨率', resolution1k: '标准', resolution2k: '2K', resolution4k: '4K', aspectRatio: '画面比例',
+  advancedSettings: '高级设置', advancedHint: '画质与输出', nativeSize: '原生尺寸', actualOutput: '输出尺寸',
+  sizeAdjusted: '已匹配当前模型支持的最接近尺寸，不进行插值放大。',
+  preciseOutput: '锁定原图尺寸，使用无损 PNG，仅合成涂抹区域。',
+  compression: '压缩质量', compressionHint: '0–100，数值越高保留的细节越多', moderation: '内容审核', moderationLow: '较宽松',
+  fidelity: '参考图保真度', xhigh: '超高', max: '最高', paint: '涂抹', erase: '擦除', zoom: '缩放', fit: '适应画布', redo: '重做',
   panel: '图片工作台', title: '把想法，变成画面。', subtitle: '从一句描述开始，让每一次创作都有新的可能。',
   newCreation: '新的创作', settings: '管理图片模型', refresh: '刷新', all: '全部作品', active: '生成中', favorites: '收藏', archived: '已归档',
   search: '搜索提示词或模型', results: '创作记录', emptyTitle: '你的下一张作品，从这里开始',
@@ -24,7 +31,7 @@ export const zh = {
   downloaded: '已开始下载原图', updated: '已更新', submitted: '生成任务已加入队列', archivedNotice: '作品已归档',
   exported: '导出到工作区', workspace: '目标工作区', filename: '文件名', noWorkspaces: '请先在左侧添加一个工作区', export: '保存图片',
   mask: '局部重绘', editMask: '绘制修改区域', clearMask: '移除选区', maskApplied: '已设置局部修改区域',
-  maskHelp: '涂抹要修改的位置，未涂抹的区域作为保留参考。最终效果由所选模型决定。',
+  maskHelp: '涂抹要修改的位置。未涂抹区域的原始像素保持不变；可放大画布、擦除选区或撤销操作。',
   brush: '画笔大小', undo: '撤销', reset: '清空选区', applyMask: '使用选区', maskRequired: '请先涂抹需要修改的区域',
   maskRequiresReference: '局部重绘需要第一张参考图', maskDimensions: '选区尺寸需要与第一张参考图一致', maskUnsupported: '当前模型不支持局部重绘',
   promptRequired: '请先描述你想生成的画面', promptLong: '画面描述超出长度限制', modelRequired: '请先选择图片模型',
@@ -46,6 +53,13 @@ export type ImageWorkbenchKey = keyof typeof zh
 
 /** 英文界面与中文保持同一组键。 */
 export const en: Record<ImageWorkbenchKey, string> = {
+  pan: 'Pan',
+  resolution: 'Resolution', resolution1k: 'Standard', resolution2k: '2K', resolution4k: '4K', aspectRatio: 'Aspect ratio',
+  advancedSettings: 'Advanced settings', advancedHint: 'Quality and output', nativeSize: 'Native size', actualOutput: 'Output size',
+  sizeAdjusted: 'Matched the closest size supported by this model. No interpolation upscaling.',
+  preciseOutput: 'Original dimensions, lossless PNG. Only painted pixels are composited.',
+  compression: 'Compression quality', compressionHint: '0–100. Higher values preserve more detail.', moderation: 'Content moderation', moderationLow: 'Less restrictive',
+  fidelity: 'Reference fidelity', xhigh: 'Extra high', max: 'Maximum', paint: 'Paint', erase: 'Erase', zoom: 'Zoom', fit: 'Fit canvas', redo: 'Redo',
   panel: 'Image studio', title: 'Turn an idea into an image.', subtitle: 'Start with a description. Keep creating from every result.',
   newCreation: 'New creation', settings: 'Manage image models', refresh: 'Refresh', all: 'All creations', active: 'In progress', favorites: 'Favorites', archived: 'Archived',
   search: 'Search prompts or models', results: 'Creations', emptyTitle: 'Your next creation starts here',
@@ -67,7 +81,7 @@ export const en: Record<ImageWorkbenchKey, string> = {
   saved: 'Saved to workspace', downloaded: 'Original image download started', updated: 'Updated', submitted: 'Generation tasks added to the queue', archivedNotice: 'Creation archived',
   exported: 'Export to workspace', workspace: 'Workspace', filename: 'File name', noWorkspaces: 'Add a workspace from the sidebar first.', export: 'Save image',
   mask: 'Edit a region', editMask: 'Paint the edit region', clearMask: 'Remove mask', maskApplied: 'Edit region selected',
-  maskHelp: 'Paint the area to change. Unpainted areas guide preservation. The selected model determines the final result.', brush: 'Brush size', undo: 'Undo', reset: 'Clear mask',
+  maskHelp: 'Paint the area to change. Original pixels outside it remain unchanged. Zoom in, erase selections or undo strokes.', brush: 'Brush size', undo: 'Undo', reset: 'Clear mask',
   applyMask: 'Use this region', maskRequired: 'Paint an area to change first.', maskRequiresReference: 'A region edit needs the first reference image.',
   maskDimensions: 'The mask must match the first reference image dimensions.', maskUnsupported: 'This model does not support masked edits.',
   promptRequired: 'Describe the image first.', promptLong: 'The description exceeds the length limit.', modelRequired: 'Choose an image model first.',

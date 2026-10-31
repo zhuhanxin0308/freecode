@@ -13,6 +13,7 @@ import { Config, type WorkbenchConfig } from './host/config.ts'
 import { ImageFailure, imageFailureCode } from './host/errors.ts'
 import { ImageProviders, imageBytes } from './host/providers.ts'
 import { ImageQueue } from './host/queue.ts'
+import { normalizeImageOrientation, validateEditMask } from './host/image-processing.ts'
 import { generationSchema, type ImageJournal, type StoredImageJob } from './host/schemas.ts'
 import { ImageStore } from './host/store.ts'
 import type { ImageAsset, ImageAssetId, ImageCatalog, ImageExportDestination, ImageExportResult, ImageImportRequest,
@@ -140,6 +141,10 @@ export default class ImageWorkbench extends TypertRemoteService {
       const model = catalog.models.find(value => JSON.stringify(value.ref) === JSON.stringify(request.model))
       if (model === undefined) throw new ImageFailure(request.model.source === 'platform' && catalog.platform === 'signed-out' ? 'account-required' : 'model-unavailable')
       if (!model.available) throw new ImageFailure(model.unavailableReason ?? 'model-unavailable')
+      if (request.compression !== undefined && (!model.optionalParameters.includes('output_compression') || request.format === 'png')
+        || request.moderation !== undefined && !model.optionalParameters.includes('moderation')
+        || request.fidelity !== undefined && (!model.optionalParameters.includes('input_fidelity') || request.referenceImageIds.length === 0)
+        || request.maskImageId !== undefined && request.format !== 'png') throw new ImageFailure('invalid-input')
       if (!model.sizes.includes(request.size) || !model.qualities.includes(request.quality)
         || !model.backgrounds.includes(request.background)
         || !model.formats.includes(request.format) || request.background === 'transparent' && request.format === 'jpeg'
@@ -150,7 +155,7 @@ export default class ImageWorkbench extends TypertRemoteService {
       }
       const accountId = request.model.source === 'platform' ? await this.providers.accountId() : undefined
       if (request.model.source === 'platform' && accountId === undefined) throw new ImageFailure('account-required')
-      const jobs = await this.store.transaction((journal) => {
+      const jobs = await this.store.transaction(async (journal) => {
         const repeated = this.previousSubmission(journal, submission.data, hash)
         if (repeated !== undefined) return repeated
         const references = request.referenceImageIds.map((id) => {
@@ -168,6 +173,7 @@ export default class ImageWorkbench extends TypertRemoteService {
           }
           if (mask.bytes > this.config.maxInputImageBytes
             || references.reduce((bytes, image) => bytes + image.bytes, mask.bytes) > this.config.maxReferenceBytes) throw new ImageFailure('too-large')
+          await validateEditMask((await this.store.readImage(request.maskImageId, 'original')).bytes, this.config)
         }
         if (request.parentJobId !== undefined) findJob(journal, request.parentJobId)
         const batch: StoredImageJob[] = Array.from({ length: input.count }, () => ({ id: randomUUID() as ImageJobId,
@@ -188,7 +194,11 @@ export default class ImageWorkbench extends TypertRemoteService {
    */
   @Remote({ resources: imageResources })
   async importImage(input: ImageImportRequest): Promise<ImageAsset> {
-    return this.perform(async () => this.store.saveImage(imageBytes(input.dataBase64, this.config.maxInputImageBytes), input.mimeType))
+    return this.perform(async () => {
+      const image = await normalizeImageOrientation(imageBytes(input.dataBase64, this.config.maxInputImageBytes), input.mimeType,
+        { maxImageBytes: this.config.maxInputImageBytes, maxImagePixels: this.config.maxImagePixels })
+      return this.store.saveImage(image.bytes, image.mimeType)
+    })
   }
   /**
    * 查询已保存图片的生成输入元数据。

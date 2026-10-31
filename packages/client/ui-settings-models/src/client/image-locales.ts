@@ -1,5 +1,6 @@
 /** 图片提供商表单的双语文案。 */
 export const imageEn = {
+  imageCompressionParameter: 'Supports compression quality', imageModerationParameter: 'Supports moderation level', imageFidelityParameter: 'Supports reference fidelity',
   providerPurpose: 'Provider purpose', purposeChat: 'Chat models', purposeImages: 'Image generation',
   chatModelsEnabled: 'Enable chat models', imageModels: 'Image models',
   imageModelsHint: 'Uses this provider’s address and saved credentials. Declare only options confirmed by the provider; model IDs alone do not describe image capabilities.',
@@ -21,6 +22,7 @@ export const imageEn = {
 
 /** 与英文键集一致的中文图片表单文案。 */
 export const imageZh: Record<keyof typeof imageEn, string> = {
+  imageCompressionParameter: '支持压缩质量', imageModerationParameter: '支持内容审核等级', imageFidelityParameter: '支持参考图保真度',
   providerPurpose: '提供商用途', purposeChat: '聊天模型', purposeImages: '图片生成',
   chatModelsEnabled: '启用聊天模型', imageModels: '图片模型',
   imageModelsHint: '复用此提供商的服务地址和已保存凭据。请填写服务商明确支持的选项，模型名称本身不能说明图片能力',

@@ -20,8 +20,11 @@ export const generationSchema = z.object({
   model: modelRefSchema, prompt: z.string().min(1), size: z.string().min(1), quality: z.string().min(1),
   background: z.enum(['auto', 'opaque', 'transparent']), format: z.enum(['png', 'jpeg', 'webp']),
   referenceImageIds: z.array(assetIdSchema), maskImageId: assetIdSchema.optional(), parentJobId: jobIdSchema.optional(),
-}).strict().transform(({ maskImageId, parentJobId, ...value }): ImageGenerationRequest => ({
+  compression: z.int().min(0).max(100).optional(), moderation: z.enum(['auto', 'low']).optional(), fidelity: z.enum(['low', 'high']).optional(),
+}).strict().transform(({ maskImageId, parentJobId, compression, moderation, fidelity, ...value }): ImageGenerationRequest => ({
   ...value, ...maskImageId === undefined ? {} : { maskImageId }, ...parentJobId === undefined ? {} : { parentJobId },
+  ...compression === undefined ? {} : { compression }, ...moderation === undefined ? {} : { moderation },
+  ...fidelity === undefined ? {} : { fidelity },
 }))
 /** 原图元数据。 */
 export const assetSchema = z.object({ id: assetIdSchema, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),

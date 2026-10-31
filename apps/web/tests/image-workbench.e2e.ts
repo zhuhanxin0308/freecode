@@ -13,6 +13,9 @@ import type { ImageSubmitRequest } from '@deepseek-ai/dsh-image-workbench-types/
 import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import { REPO_ROOT, saveFailureShot } from './support.ts'
 
+// 真实图片解码和持久化允许与同机编译争用资源，仍以任务终态作为完成依据。
+const IMAGE_JOB_TIMEOUT_MS = 30_000
+
 it('keeps original image jobs across lost submit responses, background completion, editing and Host restart', async () => {
   const root = await mkdtemp(join(tmpdir(), 'freecode-workbench-browser-'))
   let scaffold: WebScaffold | undefined
@@ -21,6 +24,7 @@ it('keeps original image jobs across lost submit responses, background completio
   const firstEntered = Promise.withResolvers<undefined>()
   const releaseFirst = Promise.withResolvers<undefined>()
   const original = await sharp({ create: { width: 1024, height: 768, channels: 4, background: '#4868eeb3' } }).png().toBuffer()
+  const edited = await sharp({ create: { width: 1024, height: 768, channels: 4, background: '#19bacc' } }).png().toBuffer()
   const requests: { path: string; authorization: string | undefined; body: Buffer; contentType: string }[] = []
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -30,7 +34,8 @@ it('keeps original image jobs across lost submit responses, background completio
       requests.push({ path: req.url ?? '', authorization: req.headers.authorization,
         body: Buffer.concat(chunks), contentType: String(req.headers['content-type']) })
       if (requests.length === 1) { firstEntered.resolve(undefined); await releaseFirst.promise }
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ b64_json: original.toString('base64') }] }))
+      const output = req.url?.endsWith('/edits') ? edited : original
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ b64_json: output.toString('base64') }] }))
     })().catch((_error: unknown) => { res.destroy() })
   })
   try {
@@ -86,7 +91,7 @@ it('keeps original image jobs across lost submit responses, background completio
     expect(firstId).not.toBeNull()
     await page.getByRole('button', { name: '插件', exact: true }).click()
     releaseFirst.resolve(undefined)
-    await expect.poll(async () => (await scaffold!.ctx.imageWorkbench.listJobs({ limit: 20 })).jobs[0]?.status).toBe('succeeded')
+    await expect.poll(async () => (await scaffold!.ctx.imageWorkbench.listJobs({ limit: 20 })).jobs[0]?.status, { timeout: IMAGE_JOB_TIMEOUT_MS }).toBe('succeeded')
     await open()
     const first = page.locator(`[data-image-job="${firstId}"]`)
     await first.getByText('已完成', { exact: true }).waitFor()
@@ -123,7 +128,7 @@ it('keeps original image jobs across lost submit responses, background completio
     await page.getByLabel('画面描述', { exact: true }).fill('将中间区域改成青色')
     await generate.click()
     await expect.poll(async () => (await scaffold!.ctx.imageWorkbench.listJobs({ limit: 20 }))
-      .jobs.filter(job => job.status === 'succeeded').length).toBe(2)
+      .jobs.filter(job => job.status === 'succeeded').length, { timeout: IMAGE_JOB_TIMEOUT_MS }).toBe(2)
     await page.getByRole('button', { name: '刷新', exact: true }).first().click()
     await expect.poll(() => page!.locator('[data-image-job]').count()).toBe(2)
     const edit = requests.find(request => request.path === '/v1/images/edits')
@@ -138,6 +143,14 @@ it('keeps original image jobs across lost submit responses, background completio
     expect(await page.locator('body').innerText()).not.toContain('fixture-image-key')
     const jobs = (await scaffold.ctx.imageWorkbench.listJobs({ limit: 20 })).jobs
     expect(jobs.find(job => job.id !== firstId)?.request.parentJobId).toBe(firstId)
+    const editedAsset = jobs.find(job => job.id !== firstId)?.images[0]
+    if (editedAsset === undefined) throw new Error('missing edited asset')
+    const editedImage = await scaffold.ctx.imageWorkbench.readImage(editedAsset.id, 'original')
+    const editedPixels = await sharp(Buffer.from(editedImage.dataBase64, 'base64')).ensureAlpha().raw().toBuffer()
+    const originalPixels = await sharp(original).ensureAlpha().raw().toBuffer()
+    expect(editedPixels.subarray(0, 4)).toEqual(originalPixels.subarray(0, 4))
+    const center = (384 * 1024 + 512) * 4
+    expect([...editedPixels.subarray(center, center + 4)]).toEqual([25, 186, 204, 255])
     await mkdir(join(REPO_ROOT, '.artifacts'), { recursive: true })
     const shots = await mkdtemp(join(REPO_ROOT, '.artifacts', 'image-workbench-'))
     await page.screenshot({ path: join(shots, 'generated-and-edited.png') })

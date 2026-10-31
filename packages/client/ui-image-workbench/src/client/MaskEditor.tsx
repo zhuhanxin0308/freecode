@@ -7,11 +7,13 @@ import { imageDataUrl } from './controller.ts'
 import css from './Workbench.module.css'
 
 interface Point { x: number; y: number }
-interface Stroke { points: [Point, ...Point[]]; radius: number }
+interface Stroke { points: [Point, ...Point[]]; radius: number; erase: boolean }
 const INITIAL_BRUSH_RADIUS = 32
 const MIN_BRUSH_RADIUS = 4
 const MAX_BRUSH_RADIUS = 160
 const MASK_VIEWPORT_HEIGHT = 60
+const MAX_ZOOM = 4
+const ZOOM_STEP = 0.25
 
 function strokePath(context: CanvasRenderingContext2D, stroke: Stroke): void {
   const start = stroke.points[0]
@@ -44,11 +46,16 @@ export function MaskEditor({ reference, initialMask, read, apply, close, t }: {
   t: (key: ImageWorkbenchKey) => string
 }) {
   const canvas = useRef<HTMLCanvasElement>(null)
+  const viewport = useRef<HTMLDivElement>(null)
+  const pan = useRef<{ x: number; y: number; left: number; top: number }>()
   const activeStroke = useRef<Stroke>()
   const [source, setSource] = useState<string>()
   const [savedMask, setSavedMask] = useState<HTMLImageElement>()
   const [clearSaved, setClearSaved] = useState(false)
   const [strokes, setStrokes] = useState<Stroke[]>([])
+  const [redo, setRedo] = useState<Stroke[]>([])
+  const [tool, setTool] = useState<'paint' | 'erase' | 'pan'>('paint')
+  const [zoom, setZoom] = useState(1)
   const [radius, setRadius] = useState(INITIAL_BRUSH_RADIUS)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -86,8 +93,11 @@ export function MaskEditor({ reference, initialMask, read, apply, close, t }: {
       context.drawImage(savedMask, 0, 0)
       context.globalCompositeOperation = 'source-over'
     }
-    for (const stroke of strokes) strokePath(context, stroke)
-    if (pending !== undefined) strokePath(context, pending)
+    for (const stroke of [...strokes, ...pending === undefined ? [] : [pending]]) {
+      context.globalCompositeOperation = stroke.erase ? 'destination-out' : 'source-over'
+      strokePath(context, stroke)
+    }
+    context.globalCompositeOperation = 'source-over'
   }, [reference.width, reference.height, savedMask, clearSaved, strokes])
   useEffect(() => { paint() }, [paint, source])
 
@@ -99,7 +109,16 @@ export function MaskEditor({ reference, initialMask, read, apply, close, t }: {
   const finish = (): void => {
     const stroke = activeStroke.current
     activeStroke.current = undefined
-    if (stroke !== undefined) setStrokes(current => [...current, stroke])
+    if (stroke !== undefined) { setStrokes(current => [...current, stroke]); setRedo([]) }
+    pan.current = undefined
+  }
+  const undoStroke = (): void => {
+    const last = strokes.at(-1)
+    if (last !== undefined) { setRedo(current => [...current, last]); setStrokes(current => current.slice(0, -1)) }
+  }
+  const redoStroke = (): void => {
+    const last = redo.at(-1)
+    if (last !== undefined) { setStrokes(current => [...current, last]); setRedo(current => current.slice(0, -1)) }
   }
   const save = async () => {
     setBusy(true)
@@ -112,8 +131,10 @@ export function MaskEditor({ reference, initialMask, read, apply, close, t }: {
       if (savedMask !== undefined && !clearSaved) {
         context.clearRect(0, 0, output.width, output.height); context.drawImage(savedMask, 0, 0)
       }
-      context.globalCompositeOperation = 'destination-out'
-      for (const stroke of strokes) strokePath(context, stroke)
+      for (const stroke of strokes) {
+        context.globalCompositeOperation = stroke.erase ? 'source-over' : 'destination-out'
+        strokePath(context, stroke)
+      }
       const blob = await new Promise<Blob | null>((resolve) => { output.toBlob(resolve, 'image/png') })
       if (!present()) return
       if (blob === null) { setFailed(true); return }
@@ -126,25 +147,49 @@ export function MaskEditor({ reference, initialMask, read, apply, close, t }: {
       <p className={css.hint}>{t('maskHelp')}</p>
       {failed && source !== undefined && <p role="alert">{t('uploadFailed')}</p>}
       {source === undefined ? failed ? <p role="alert">{t('error.result-unavailable')}</p> : <span role="status" aria-label={t('loading')}><IconLoadingOutlineRegular className={css.spinner} /></span>
-        : <div className={css.maskStage} style={{ aspectRatio: `${reference.width}/${reference.height}`,
-          maxWidth: `${MASK_VIEWPORT_HEIGHT * reference.width / reference.height}vh` }}>
-          <img src={source} alt={t('reference')} />
-          <canvas ref={canvas} width={reference.width} height={reference.height} className={css.maskCanvas}
-            aria-label={t('editMask')} onPointerDown={(event) => {
-              if (busy || event.button !== 0) return
-              event.currentTarget.setPointerCapture(event.pointerId)
-              activeStroke.current = { points: [pointOf(event)], radius }
-              paint(activeStroke.current)
-            }} onPointerMove={(event) => {
-              if (activeStroke.current === undefined) return
-              activeStroke.current.points.push(pointOf(event)); paint(activeStroke.current)
-            }} onPointerUp={finish} onPointerCancel={finish} />
-        </div>}
+        : <div className={css.maskViewport} ref={viewport}>
+          <div className={css.maskStage} style={{ aspectRatio: `${reference.width}/${reference.height}`, width: `${zoom * 100}%`,
+            maxWidth: `${MASK_VIEWPORT_HEIGHT * reference.width / reference.height * zoom}vh` }}>
+            <img src={source} alt={t('reference')} />
+            <canvas ref={canvas} width={reference.width} height={reference.height} className={css.maskCanvas}
+              aria-label={t('editMask')} tabIndex={0} data-tool={tool} onKeyDown={(event) => {
+                if (busy || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return
+                event.preventDefault()
+                if (event.shiftKey) redoStroke(); else undoStroke()
+              }} onPointerDown={(event) => {
+                if (busy || event.button !== 0) return
+                event.currentTarget.setPointerCapture(event.pointerId)
+                if (tool === 'pan' && viewport.current !== null) {
+                  pan.current = { x: event.clientX, y: event.clientY, left: viewport.current.scrollLeft, top: viewport.current.scrollTop }
+                  return
+                }
+                activeStroke.current = { points: [pointOf(event)], radius, erase: tool === 'erase' }
+                paint(activeStroke.current)
+              }} onPointerMove={(event) => {
+                if (pan.current !== undefined && viewport.current !== null) {
+                  viewport.current.scrollLeft = pan.current.left + pan.current.x - event.clientX
+                  viewport.current.scrollTop = pan.current.top + pan.current.y - event.clientY
+                  return
+                }
+                if (activeStroke.current === undefined) return
+                activeStroke.current.points.push(pointOf(event)); paint(activeStroke.current)
+              }} onPointerUp={finish} onPointerCancel={finish} />
+          </div></div>}
+      <div className={css.maskActions}>
+        <div className={css.maskTools} role="group" aria-label={t('editMask')}>
+          {(['paint', 'erase', 'pan'] as const).map(value => <Button key={value} size="sm" disabled={busy} aria-pressed={tool === value}
+            onClick={() => { setTool(value) }}>{t(value)}</Button>)}
+        </div>
+        <label className={css.brush}>{t('zoom')}<input type="range" min={1} max={MAX_ZOOM} step={ZOOM_STEP} value={zoom}
+          onChange={(event) => { setZoom(Number(event.target.value)) }} /><span>{Math.round(zoom * 100)}%</span></label>
+        <Button size="sm" onClick={() => { setZoom(1) }}>{t('fit')}</Button>
+      </div>
       <div className={css.maskActions}>
         <label className={css.brush}>{t('brush')}<input type="range" min={MIN_BRUSH_RADIUS} max={MAX_BRUSH_RADIUS} value={radius}
           onChange={(event) => { setRadius(Number(event.target.value)) }} /><span>{radius}</span></label>
-        <Button disabled={strokes.length === 0 || busy} onClick={() => { setStrokes(current => current.slice(0, -1)) }}>{t('undo')}</Button>
-        <Button disabled={busy} onClick={() => { setStrokes([]); setClearSaved(true) }}>{t('reset')}</Button>
+        <Button disabled={strokes.length === 0 || busy} onClick={undoStroke}>{t('undo')}</Button>
+        <Button disabled={redo.length === 0 || busy} onClick={redoStroke}>{t('redo')}</Button>
+        <Button disabled={busy} onClick={() => { setStrokes([]); setRedo([]); setClearSaved(true) }}>{t('reset')}</Button>
         <Button variant="primary" disabled={busy || source === undefined || strokes.length === 0 && (savedMask === undefined || clearSaved)}
           onClick={() => { void save() }}>{t('applyMask')}</Button>
       </div>

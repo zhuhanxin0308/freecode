@@ -16,6 +16,7 @@ import { ImageFailure } from '../src/host/errors.ts'
 import { credentialKey, credentialRef } from '@deepseek-ai/dsh-credentials'
 import { Config, type WorkbenchConfig } from '../src/host/config.ts'
 import type { ImageAssetId, ImageJobId, ImageSubmitRequest, ImageSubmissionId } from '../src/types.ts'
+import type { ImageModelProfile } from '@deepseek-ai/dsh-llm-pi-ai'
 
 const resources: { ctx: Context; root: string }[] = []
 vi.mock('node:fs/promises', async (original) => {
@@ -84,6 +85,30 @@ it('rejects unsupported parameters and out-of-range batch sizes before creating 
   await expect(service.submit({ ...request, count: 0 })).rejects.toMatchObject({ details: { reason: 'invalid-input' } })
   await expect(service.submit({ ...request, request: { ...request.request, quality: 'high' } })).rejects.toMatchObject({ details: { reason: 'invalid-input' } })
   expect((await service.listJobs({ limit: 20 })).jobs).toEqual([])
+})
+
+it('高级输入经过 Host 能力校验并完整持久化，重放保持原始输入', async () => {
+  const f = await setup()
+  const original = await sharp({ create: { width: 4, height: 4, channels: 4, background: '#ffffff80' } }).png().toBuffer()
+  const asset = await f.service.importImage({ mimeType: 'image/png', dataBase64: original.toString('base64') })
+  const reject = async (patch: Partial<ImageSubmitRequest['request']>) => {
+    const request = input()
+    await expect(f.service.submit({ ...request, request: { ...request.request, ...patch } })).rejects.toMatchObject({ details: { reason: 'invalid-input' } })
+  }
+  await reject({ compression: 50 })
+  await reject({ moderation: 'low' })
+  await reject({ fidelity: 'high', referenceImageIds: [asset.id] })
+  const model: ImageModelProfile = { ...f.profile.imageModels[0]!, backgrounds: ['auto'], formats: ['png', 'jpeg'], supportsMask: true,
+    optionalParameters: ['output_format', 'output_compression', 'moderation', 'input_fidelity'] }
+  Object.assign(f.profile.imageModels[0]!, model)
+  await reject({ compression: 50 })
+  await reject({ fidelity: 'high' })
+  await reject({ format: 'jpeg', referenceImageIds: [asset.id], maskImageId: asset.id })
+  const request = input()
+  request.request = { ...request.request, format: 'jpeg', compression: 75, moderation: 'low', fidelity: 'high', referenceImageIds: [asset.id] }
+  const accepted = await f.service.submit(request)
+  expect(accepted[0]?.request).toEqual(request.request)
+  expect(await f.service.submit(request)).toEqual(accepted)
 })
 
 it('imports intact originals and publishes a complete workspace file without replacing existing content', async () => {
@@ -346,7 +371,6 @@ it('取消在等待文件锁期间遇到任务派发时保留运行状态', asyn
   if (first === undefined) throw new Error('缺少排队任务')
   const store = new ImageStore({ ...Config({ directory: f.root }), directory: f.root })
   let cancellation: Promise<unknown> | undefined
-  // oxlint-disable-next-line typescript/unbound-method -- 下方用 call(this) 保留实际读取实例。
   const read = ImageStore.prototype.read
   await store.transaction(async (journal) => {
     const observed = Promise.withResolvers<undefined>()

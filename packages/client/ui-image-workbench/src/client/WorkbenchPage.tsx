@@ -5,7 +5,7 @@ import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ImageAsset, ImageJob, ImageJobId } from '../types.ts'
 import type { ImageFilter, ImageWorkbenchFace } from './controller.ts'
 import type { ImageWorkbenchKey } from './locales.ts'
-import { createDraft, modelKey, requestFromDraft, type ImageDraft } from './draft.ts'
+import { changeDraftModel, createDraft, modelKey, requestFromDraft, type ImageDraft } from './draft.ts'
 import { readImageFile, downloadImage } from './image-files.ts'
 import { CreationForm } from './CreationForm.tsx'
 import { ImageCard } from './ImageCard.tsx'
@@ -54,9 +54,7 @@ export function WorkbenchPage({ useWorkbench, activate, refresh, setFilter, setS
   }
   const chooseModel = (key: string): void => {
     const next = catalog?.models.find(model => modelKey(model.ref) === key)
-    replaceDraft({ ...draft, ...createDraft(next), prompt: draft.prompt, count: draft.count, references: draft.references,
-      ...draft.mask === undefined ? {} : { mask: draft.mask },
-      ...draft.parentJobId === undefined ? {} : { parentJobId: draft.parentJobId } })
+    replaceDraft(changeDraftModel(draft, next))
   }
   const files = catalog === undefined || model === undefined || !model.supportsEdit ? undefined : async (files: File[]): Promise<void> => {
     if (draft.references.length + files.length > model.maxReferenceImages) { setFormError('referencesTooMany'); return }
@@ -90,6 +88,9 @@ export function WorkbenchPage({ useWorkbench, activate, refresh, setFilter, setS
     if (job.request.maskImageId !== undefined && mask === undefined) return
     replaceDraft({ modelKey: modelKey(job.request.model), prompt: job.request.prompt, size: job.request.size, quality: job.request.quality,
       background: job.request.background, format: job.request.format, count: 1,
+      ...job.request.compression === undefined ? {} : { compression: job.request.compression },
+      ...job.request.moderation === undefined ? {} : { moderation: job.request.moderation },
+      ...job.request.fidelity === undefined ? {} : { fidelity: job.request.fidelity },
       references: references.filter((image): image is ImageAsset => image !== undefined), parentJobId: job.id,
       ...mask === undefined ? {} : { mask } })
   }
@@ -111,7 +112,7 @@ export function WorkbenchPage({ useWorkbench, activate, refresh, setFilter, setS
       const input = await readImageFile(file, catalog.limits.maxImageBytes)
       const mask = await importImage(input)
       if (mask === undefined || revision !== maskRevision.current) return false
-      setDraft(current => ({ ...current, mask }))
+      setDraft(current => ({ ...current, mask, format: 'png' }))
       setFormError(undefined)
       return true
     } catch (_error) { notify('uploadFailed'); return false }

@@ -49,7 +49,7 @@ export function ImageModelEditor(props: ImageModelEditorProps): ReactNode {
     const current = model.optionalParameters ?? []
     const optionalParameters = enabled ? [...current, field] : current.filter(value => value !== field)
     const reset: Partial<ImageModelDraft> = enabled ? {} : field === 'quality' ? { qualities: ['auto'] }
-      : field === 'background' ? { backgrounds: ['auto'] } : { formats: ['png'] }
+      : field === 'background' ? { backgrounds: ['auto'] } : field === 'output_format' ? { formats: ['png'] } : {}
     update(index, { ...reset, optionalParameters })
   }
   return <section className={imageStyles['editor']} aria-label={t('imageModels')}>
@@ -85,7 +85,8 @@ export function ImageModelEditor(props: ImageModelEditorProps): ReactNode {
             <span className={styles['advancedHint']}>{t('imageListHint')}</span>
           </label>
           <div className={`${imageStyles['options']} ${imageStyles['wide']}`}>
-            {([['quality', 'imageQualityParameter'], ['background', 'imageBackgroundParameter'], ['output_format', 'imageFormatParameter']] as const).map(([field, key]) =>
+            {([['quality', 'imageQualityParameter'], ['background', 'imageBackgroundParameter'], ['output_format', 'imageFormatParameter'],
+              ['output_compression', 'imageCompressionParameter'], ['moderation', 'imageModerationParameter'], ['input_fidelity', 'imageFidelityParameter']] as const).map(([field, key]) =>
               <label className={imageStyles['check']} key={field}><input type="checkbox" checked={supports(field)} disabled={disabled}
                 aria-label={`${t(key)} ${position}`} onChange={(event) => { parameter(index, model, field, event.target.checked) }} />{t(key)}</label>)}
           </div>

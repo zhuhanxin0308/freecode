@@ -17,7 +17,7 @@ export type ImageMimeType = 'image/png' | 'image/jpeg' | 'image/webp'
 /** 服务商明确支持的背景处理方式。 */
 export type ImageBackground = 'auto' | 'opaque' | 'transparent'
 /** 模型明确允许写入请求的可选参数。 */
-export type ImageOptionalParameter = 'quality' | 'background' | 'output_format'
+export type ImageOptionalParameter = 'quality' | 'background' | 'output_format' | 'output_compression' | 'moderation' | 'input_fidelity'
 /** 平台目录与自定义提供方的独立模型地址。 */
 export type ImageModelRef = { source: 'platform'; id: string } | { source: 'custom'; provider: string; id: string }
 /** 可直接本地化的操作失败分类，不携带上游原始响应。 */
@@ -66,6 +66,9 @@ export interface ImageGenerationRequest {
   referenceImageIds: ImageAssetId[]
   maskImageId?: ImageAssetId
   parentJobId?: ImageJobId
+  compression?: number
+  moderation?: 'auto' | 'low'
+  fidelity?: 'low' | 'high'
 }
 /** 一次批量操作；每张图片均有独立任务与幂等标识。 */
 export interface ImageSubmitRequest { submissionId: ImageSubmissionId; request: ImageGenerationRequest; count: number }

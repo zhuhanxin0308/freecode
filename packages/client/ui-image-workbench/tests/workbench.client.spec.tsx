@@ -54,7 +54,11 @@ it('选择平台或自定义图片模型并按能力提交，界面没有第二�
   expect(input.submit).not.toHaveBeenCalled()
   fireEvent.change(screen.getByLabelText(en.prompt), { target: { value: 'A blue sphere' } })
   fireEvent.change(screen.getByLabelText(en.model), { target: { value: modelKey(custom.ref) } })
-  fireEvent.change(screen.getByLabelText(en.size), { target: { value: '1536x1024' } })
+  expect(document.querySelector('details')?.open).toBe(false)
+  fireEvent.change(screen.getByLabelText(en.aspectRatio), { target: { value: '3:2' } })
+  fireEvent.change(screen.getByLabelText(en.resolution), { target: { value: '4k' } })
+  expect(screen.getByText(en.sizeAdjusted)).not.toBeNull()
+  fireEvent.click(screen.getByText(en.advancedSettings))
   fireEvent.change(screen.getByLabelText(en.quality), { target: { value: 'high' } })
   fireEvent.change(screen.getByLabelText(en.background), { target: { value: 'transparent' } })
   fireEvent.change(screen.getByLabelText(en.format), { target: { value: 'webp' } })
@@ -501,7 +505,6 @@ it('模型能力变化后下拉框的空选项不会写入无效背景或格式'
 })
 
 it('文件尚在浏览器读取时新建创作，不再把旧文件送往Host', async () => {
-  // oxlint-disable-next-line typescript/unbound-method -- 下方用 original.call(this, file) 恢复同一个读取器。
   const original = FileReader.prototype.readAsDataURL
   let resume: (() => void) | undefined
   vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementationOnce(function (this: FileReader, file) {
@@ -531,4 +534,20 @@ it('复用无参考图的任务只带回参数与父任务，不引入选区或�
   await waitFor(() => { expect(input.submit).toHaveBeenCalledOnce() })
   expect(input.submit.mock.calls[0]?.[0].request.referenceImageIds).toEqual([])
   expect(input.submit.mock.calls[0]?.[0].request).not.toHaveProperty('maskImageId')
+})
+
+it('复用创作时恢复高级参数，再次提交仍按当前模型能力发送', async () => {
+  const previous = job('advanced')
+  previous.request = { ...previous.request, format: 'webp', compression: 80, moderation: 'low', fidelity: 'high', referenceImageIds: [asset.id] }
+  const supported: ImageModelDescriptor = { ...model, optionalParameters: [...model.optionalParameters, 'output_compression', 'moderation', 'input_fidelity'] }
+  const input = props({ jobs: [previous], catalog: { ...catalog, models: [supported] } })
+  render(<WorkbenchPage {...input} />)
+  fireEvent.click(screen.getByRole('button', { name: en.reuse }))
+  await waitFor(() => { expect(screen.getByLabelText<HTMLTextAreaElement>(en.prompt).value).toBe(previous.request.prompt) })
+  expect(screen.getByLabelText<HTMLInputElement>(new RegExp(en.compression)).value).toBe('80')
+  expect(screen.getByLabelText<HTMLSelectElement>(en.moderation).value).toBe('low')
+  expect(screen.getByLabelText<HTMLSelectElement>(en.fidelity).value).toBe('high')
+  fireEvent.click(screen.getByRole('button', { name: /Generate.*10 points/ }))
+  await waitFor(() => { expect(input.submit).toHaveBeenCalledOnce() })
+  expect(input.submit.mock.calls[0]?.[0].request).toMatchObject({ compression: 80, moderation: 'low', fidelity: 'high', parentJobId: previous.id })
 })

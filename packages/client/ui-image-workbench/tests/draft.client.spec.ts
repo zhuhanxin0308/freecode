@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { ImageAsset, ImageAssetId, ImageCatalog, ImageJobId, ImageModelDescriptor } from '../src/types.ts'
-import { createDraft, estimatePoints, modelKey, requestFromDraft } from '../src/client/draft.ts'
+import { changeDraftModel, createDraft, estimatePoints, modelKey, requestFromDraft } from '../src/client/draft.ts'
 
 const model: ImageModelDescriptor = { ref: { source: 'platform', id: 'image-model' }, name: 'Image Model', providerName: 'free code',
   available: true, sizes: ['1024x1024'], qualities: ['auto', 'high'], backgrounds: ['auto', 'transparent'], formats: ['png'],
@@ -23,6 +23,37 @@ it('按模型能力构造请求，不把其他模型的选项带过去', () => {
   } } })
   draft.size = '4096x4096'
   expect(requestFromDraft(draft, model, limits)).toEqual({ ok: false, error: 'unsupportedOptions' })
+})
+
+it('高级参数仅在模型和当前模式支持时发送，局部编辑固定无损 PNG', () => {
+  const advanced: ImageModelDescriptor = { ...model, formats: ['png', 'jpeg', 'webp'], optionalParameters: ['quality', 'background', 'output_format', 'output_compression', 'moderation', 'input_fidelity'] }
+  const draft = { ...createDraft(advanced), prompt: '修改颜色', format: 'webp' as const, compression: 75, moderation: 'low' as const, fidelity: 'high' as const }
+  expect(requestFromDraft(draft, advanced, limits)).toMatchObject({ ok: true, value: { request: { compression: 75, moderation: 'low' } } })
+  const result = requestFromDraft(draft, advanced, limits)
+  if (result.ok) expect(result.value.request).not.toHaveProperty('fidelity')
+  const reference: ImageAsset = { id: 'base' as ImageAssetId, mimeType: 'image/png', width: 1024, height: 1024, bytes: 10 }
+  expect(requestFromDraft({ ...draft, references: [reference], mask: { ...reference, id: 'mask' as ImageAssetId } }, advanced, limits))
+    .toMatchObject({ ok: true, value: { request: { format: 'png', fidelity: 'high' } } })
+  for (const compression of [-1, 101, Number.NaN, 1.5]) {
+    expect(requestFromDraft({ ...draft, compression }, advanced, limits)).toMatchObject({ ok: false })
+  }
+  expect(requestFromDraft({ ...draft, format: 'jpeg', background: 'transparent' }, advanced, limits))
+    .toMatchObject({ ok: true, value: { request: { format: 'png' } } })
+  expect(requestFromDraft({ ...draft, format: 'jpeg', background: 'transparent' }, { ...advanced, formats: ['jpeg'] }, limits)).toMatchObject({ ok: false })
+})
+
+it('更换模型保留提示、参考图及构图意图，移除不再支持的高级参数', () => {
+  const image: ImageAsset = { id: 'mask' as ImageAssetId, mimeType: 'image/png', bytes: 10, width: 100, height: 100 }
+  const draft = { ...createDraft(model), prompt: '保留描述', size: '3840x2160', quality: 'max', format: 'webp' as const, background: 'opaque' as const,
+    compression: 75, moderation: 'low' as const, fidelity: 'high' as const, references: [image], mask: image }
+  const next = changeDraftModel(draft, model)
+  expect(next).toMatchObject({ prompt: draft.prompt, size: '1024x1024', resolution: '4k', ratio: '16:9', quality: 'auto', background: 'auto', format: 'png', mask: image })
+  expect(next).not.toHaveProperty('compression')
+  expect(next).not.toHaveProperty('moderation')
+  expect(next).not.toHaveProperty('fidelity')
+  const supported: ImageModelDescriptor = { ...model, optionalParameters: ['output_compression', 'moderation', 'input_fidelity'] }
+  expect(changeDraftModel({ ...next, compression: 50, moderation: 'auto', fidelity: 'low' }, supported)).toMatchObject({ compression: 50, moderation: 'auto', fidelity: 'low' })
+  expect(changeDraftModel(createDraft(model))).toMatchObject({ modelKey: '', size: '', quality: '', background: 'auto', format: 'png' })
 })
 
 it.each([
